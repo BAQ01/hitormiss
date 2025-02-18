@@ -92,34 +92,39 @@ def play(track_id):
     devices = device_response.json().get("devices", [])
 
     if not devices:
-        return render_template("open_spotify.html", track_id=track_id)
+        return '❌ Geen actieve Spotify apparaten gevonden! Zorg dat Spotify op je iPhone is geopend en speel iets af.', 400
 
-    # **Stap 2: Selecteer een actief apparaat**
-    device_id = next((d["id"] for d in devices if d["is_active"]), None)
+    # **Stap 2: Selecteer specifiek je iPhone als afspeelapparaat**
+    device_id = None
+    for device in devices:
+        if "iPhone" in device["name"]:  # Controleer of de naam "iPhone" bevat
+            device_id = device["id"]
+            break
 
     if not device_id:
-        device_id = devices[0]["id"]  # Fallback naar eerste apparaat als er geen actieve is
-    print(f"✅ Geselecteerd apparaat: {device_id}")
+        return "❌ Geen iPhone gevonden. Open Spotify op je iPhone en speel iets af.", 400
 
-    # **Stap 3: Forceer Spotify om naar dit apparaat te schakelen**
+    print(f"✅ iPhone geselecteerd: {device_id}")
+
+    # **Stap 3: Forceer Spotify om de iPhone als afspeelapparaat te gebruiken**
     transfer_url = "https://api.spotify.com/v1/me/player"
-    transfer_payload = {"device_ids": [device_id]}  
+    transfer_payload = {"device_ids": [device_id]}
 
     transfer_response = requests.put(transfer_url, headers=headers, json=transfer_payload)
 
     if transfer_response.status_code not in [200, 204]:
-        return f"⚠️ Kan Spotify niet verplaatsen: {transfer_response.status_code} {transfer_response.text}", 500
+        return f"⚠️ Kan Spotify niet naar je iPhone verplaatsen: {transfer_response.status_code} {transfer_response.text}", 500
 
-    print(f"✅ Spotify sessie verplaatst naar apparaat: {device_id}")
+    print(f"✅ Spotify sessie verplaatst naar je iPhone: {device_id}")
 
-    # **Stap 4: Start het afspelen op het geselecteerde apparaat**
+    # **Stap 4: Start het afspelen op de iPhone**
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
     response = requests.put(play_url, headers=headers, json={"uris": [f"spotify:track:{track_id}"]})
 
     if response.status_code == 204:
-        return f"🎵 Track {track_id} wordt afgespeeld op apparaat {device_id}!"
+        return f"🎵 Track {track_id} wordt afgespeeld op je iPhone!"
     else:
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
-
+    
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
