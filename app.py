@@ -10,7 +10,7 @@ app.config['SESSION_COOKIE_NAME'] = "SpotifyLogin"
 
 SPOTIPY_CLIENT_ID = "523d90f864664cb7b8bde95b200b653e"
 SPOTIPY_CLIENT_SECRET = "cbd38ca3e0414011869bb300332ba43c"
-SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"  # ✅ Update de Render URL
+SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"  # ✅ Render URL
 
 scope = "user-read-playback-state user-modify-playback-state streaming"
 
@@ -24,8 +24,8 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 def home():
     return render_template("home.html")
 
-# De QR-scannerpagina
-@@app.route('/scan')
+# 📌 De QR-scannerpagina
+@app.route('/scan')
 def scan():
     track_id = request.args.get("track")
     
@@ -34,9 +34,6 @@ def scan():
     
     # 🔄 Redirect naar de juiste afspeelpagina
     return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5500)
 
 # 🔹 Spotify OAuth Login
 @app.route('/login')
@@ -129,6 +126,7 @@ def play(track_id):
         return f"🎵 Track {track_id} wordt afgespeeld op apparaat {device_id}!"
     else:
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
-    
+
+# 📌 **Correcte plaats voor `if __name__ == '__main__':`**
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
