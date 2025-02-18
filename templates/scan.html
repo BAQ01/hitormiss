@@ -46,7 +46,7 @@
     <h1>📷 Scan een QR-code</h1>
     <video id="video" autoplay></video>
     <button id="scan-button">Start QR-Scan</button>
-    <p id="message"></p>
+    <p id="message">📷 Wacht op scan...</p>
 
     <script>
         const video = document.getElementById("video");
@@ -54,22 +54,34 @@
         const message = document.getElementById("message");
 
         scanButton.addEventListener("click", () => {
+            console.log("🔄 Start camera...");
+            startCamera();
+        });
+
+        function startCamera() {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
                 .then((stream) => {
                     video.srcObject = stream;
+                    console.log("✅ Camera gestart!");
                     scanQRCode();
                 })
                 .catch((error) => {
                     message.textContent = "❌ Kan geen camera openen!";
-                    console.error(error);
+                    console.error("❌ Camera fout:", error);
                 });
-        });
+        }
 
         function scanQRCode() {
+            console.log("🔄 Start QR-scan...");
             const canvasElement = document.createElement("canvas");
             const canvas = canvasElement.getContext("2d");
 
             setInterval(() => {
+                if (!video.videoWidth || !video.videoHeight) {
+                    console.warn("⚠️ Video niet geladen, wacht...");
+                    return;
+                }
+
                 canvasElement.width = video.videoWidth;
                 canvasElement.height = video.videoHeight;
                 canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
@@ -79,6 +91,7 @@
 
                 if (qrCode) {
                     console.log(`✅ QR-code gevonden: ${qrCode.data}`);
+                    message.textContent = "✅ QR-code gescand!";
                     window.location.href = `/process_scan?track=${encodeURIComponent(qrCode.data)}`;
                 }
             }, 500);
