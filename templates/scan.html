@@ -4,33 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scan QR Code - HITORMISS</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body {
             text-align: center;
             font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #1DB954, #191414);
-            color: white;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
         }
-        #canvas {
-            display: none; /* Geen live video feed meer nodig */
-        }
-        #capture-button {
-            margin: 10px auto;
-            padding: 15px 30px;
-            font-size: 18px;
-            background-color: #1DB954;
-            color: white;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: auto;
         }
         #message {
             margin-top: 20px;
@@ -41,43 +24,23 @@
 </head>
 <body>
     <h1>📷 Scan een QR-code</h1>
-    <input type="file" accept="image/*" capture="environment" id="capture-button">
-    <p id="message">📷 Upload een foto van een QR-code...</p>
-
-    <canvas id="canvas"></canvas>
+    <div id="reader"></div>
+    <p id="message"></p>
 
     <script>
-        const captureButton = document.getElementById("capture-button");
-        const message = document.getElementById("message");
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
+        function onScanSuccess(decodedText) {
+            console.log("✅ QR-code gescand:", decodedText);
+            window.location.href = `/process_scan?track=${decodedText}`;
+        }
 
-        captureButton.addEventListener("change", function(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        function onScanFailure(error) {
+            console.warn("⚠️ Geen geldige QR-code gedetecteerd:", error);
+        }
 
-            const reader = new FileReader();
-            reader.onload = function() {
-                const img = new Image();
-                img.src = reader.result;
-                img.onload = function() {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0, img.width, img.height);
-
-                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
-                    const qrCode = jsQR(imageData.data, img.width, img.height);
-
-                    if (qrCode) {
-                        console.log(`✅ QR-code gevonden: ${qrCode.data}`);
-                        message.textContent = "✅ QR-code gescand!";
-                        window.location.href = `/process_scan?track=${encodeURIComponent(qrCode.data)}`;
-                    } else {
-                        message.textContent = "❌ Geen geldige QR-code gevonden!";
-                    }
-                };
-            };
-            reader.readAsDataURL(file);
+        // Start de scanner bij het laden van de pagina
+        document.addEventListener("DOMContentLoaded", function() {
+            let scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+            scanner.render(onScanSuccess, onScanFailure);
         });
     </script>
 </body>
