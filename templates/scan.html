@@ -24,9 +24,9 @@
             max-width: 400px;
             border: 2px solid white;
         }
-        #scan-button {
+        #scan-button, #toggle-camera {
             display: block;
-            margin: 20px auto;
+            margin: 10px auto;
             padding: 10px 20px;
             font-size: 18px;
             background-color: #1DB954;
@@ -45,24 +45,39 @@
 <body>
     <h1>📷 Scan een QR-code</h1>
     <video id="video" autoplay></video>
+    <button id="toggle-camera">🔄 Wissel camera</button>
     <button id="scan-button">Start QR-Scan</button>
     <p id="message">📷 Wacht op scan...</p>
 
     <script>
         const video = document.getElementById("video");
         const scanButton = document.getElementById("scan-button");
+        const toggleCameraButton = document.getElementById("toggle-camera");
         const message = document.getElementById("message");
+
+        let useBackCamera = true;  // Start met achtercamera
 
         scanButton.addEventListener("click", () => {
             console.log("🔄 Start camera...");
             startCamera();
         });
 
+        toggleCameraButton.addEventListener("click", () => {
+            useBackCamera = !useBackCamera; // Wissel tussen voor- en achtercamera
+            startCamera();
+        });
+
         function startCamera() {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            const constraints = {
+                video: {
+                    facingMode: useBackCamera ? "environment" : "user"
+                }
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
                 .then((stream) => {
                     video.srcObject = stream;
-                    console.log("✅ Camera gestart!");
+                    console.log("✅ Camera gestart! Gebruik achterkant:", useBackCamera);
                     scanQRCode();
                 })
                 .catch((error) => {
