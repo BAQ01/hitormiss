@@ -22,7 +22,7 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 # 🎵 Hoofdpagina - Welkom en verbind met Spotify
 @app.route('/')
 def home():
-    return render_template("index.html")
+    return render_template("home.html")
 
 # 🔹 Spotify OAuth Login
 @app.route('/login')
