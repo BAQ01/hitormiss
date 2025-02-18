@@ -25,9 +25,15 @@ def home():
     return render_template("home.html")
 
 # De QR-scannerpagina
-@app.route('/scan')
+@@app.route('/scan')
 def scan():
-    return render_template("scan.html")  
+    track_id = request.args.get("track")
+    
+    if not track_id:
+        return "❌ Geen track ID gevonden!", 400
+    
+    # 🔄 Redirect naar de juiste afspeelpagina
+    return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
