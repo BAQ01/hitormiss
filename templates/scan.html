@@ -1,34 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <title>Scan QR Code - HITORMISS</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        #video {
+            width: 100%;
+            max-width: 400px;
+            border: 2px solid black;
+        }
+        #scan-button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #message {
+            margin-top: 20px;
+            font-size: 18px;
+            color: red;
+        }
+    </style>
 </head>
 <body>
-    <h1>Scan een QR-code</h1>
-    <div id="qr-reader" style="width: 300px;"></div>
-    <p id="qr-result">Scan een QR-code om een nummer af te spelen!</p>
+    <h1>📷 Scan een QR-code</h1>
+    <video id="video" autoplay></video>
+    <button id="scan-button">Start QR-Scan</button>
+    <p id="message"></p>
 
     <script>
-        function onScanSuccess(decodedText, decodedResult) {
-            console.log(`✅ Gescand: ${decodedText}`);
+        const video = document.getElementById("video");
+        const scanButton = document.getElementById("scan-button");
+        const message = document.getElementById("message");
 
-            // ✅ Automatisch doorsturen naar het gescande nummer
-            window.location.href = `/play/${decodedText}`;
+        scanButton.addEventListener("click", () => {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    scanQRCode();
+                })
+                .catch((error) => {
+                    message.textContent = "❌ Kan geen camera openen!";
+                    console.error(error);
+                });
+        });
+
+        function scanQRCode() {
+            const canvasElement = document.createElement("canvas");
+            const canvas = canvasElement.getContext("2d");
+
+            setInterval(() => {
+                canvasElement.width = video.videoWidth;
+                canvasElement.height = video.videoHeight;
+                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+
+                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+                if (qrCode) {
+                    window.location.href = `/process_scan?track=${qrCode.data}`;
+                }
+            }, 500);
         }
-
-        let html5QrCode = new Html5Qrcode("qr-reader");
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            {
-                fps: 10,  // Frames per second
-                qrbox: { width: 250, height: 250 } // Grootte van de scanner
-            },
-            onScanSuccess
-        );
     </script>
 </body>
 </html>

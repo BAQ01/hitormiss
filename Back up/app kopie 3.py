@@ -24,17 +24,6 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 def home():
     return render_template("home.html")
 
-# De QR-scannerpagina
-@app.route('/scan')
-def scan():
-    track_id = request.args.get("track")
-    
-    if not track_id:
-        return "❌ Geen track ID gevonden!", 400
-    
-    # 🔄 Redirect naar de juiste afspeelpagina
-    return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
-
 # 🔹 Spotify OAuth Login
 @app.route('/login')
 def login():
