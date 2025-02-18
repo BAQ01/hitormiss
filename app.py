@@ -10,7 +10,7 @@ app.config['SESSION_COOKIE_NAME'] = "SpotifyLogin"
 
 SPOTIPY_CLIENT_ID = "523d90f864664cb7b8bde95b200b653e"
 SPOTIPY_CLIENT_SECRET = "cbd38ca3e0414011869bb300332ba43c"
-SPOTIPY_REDIRECT_URI = "http://localhost:5500/callback"
+SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"  # ✅ Update de Render URL
 
 scope = "user-read-playback-state user-modify-playback-state streaming"
 
