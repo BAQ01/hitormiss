@@ -19,15 +19,12 @@
             justify-content: center;
             height: 100vh;
         }
-        #video {
-            width: 100%;
-            max-width: 400px;
-            border: 2px solid white;
+        #canvas {
+            display: none; /* Geen live video feed meer nodig */
         }
-        #scan-button, #toggle-camera {
-            display: block;
+        #capture-button {
             margin: 10px auto;
-            padding: 10px 20px;
+            padding: 15px 30px;
             font-size: 18px;
             background-color: #1DB954;
             color: white;
@@ -44,73 +41,44 @@
 </head>
 <body>
     <h1>📷 Scan een QR-code</h1>
-    <video id="video" autoplay></video>
-    <button id="toggle-camera">🔄 Wissel camera</button>
-    <button id="scan-button">Start QR-Scan</button>
-    <p id="message">📷 Wacht op scan...</p>
+    <input type="file" accept="image/*" capture="environment" id="capture-button">
+    <p id="message">📷 Upload een foto van een QR-code...</p>
+
+    <canvas id="canvas"></canvas>
 
     <script>
-        const video = document.getElementById("video");
-        const scanButton = document.getElementById("scan-button");
-        const toggleCameraButton = document.getElementById("toggle-camera");
+        const captureButton = document.getElementById("capture-button");
         const message = document.getElementById("message");
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
 
-        let useBackCamera = true;  // Start met achtercamera
+        captureButton.addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-        scanButton.addEventListener("click", () => {
-            console.log("🔄 Start camera...");
-            startCamera();
-        });
+            const reader = new FileReader();
+            reader.onload = function() {
+                const img = new Image();
+                img.src = reader.result;
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
 
-        toggleCameraButton.addEventListener("click", () => {
-            useBackCamera = !useBackCamera; // Wissel tussen voor- en achtercamera
-            startCamera();
-        });
+                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    const qrCode = jsQR(imageData.data, img.width, img.height);
 
-        function startCamera() {
-            const constraints = {
-                video: {
-                    facingMode: useBackCamera ? "environment" : "user"
-                }
+                    if (qrCode) {
+                        console.log(`✅ QR-code gevonden: ${qrCode.data}`);
+                        message.textContent = "✅ QR-code gescand!";
+                        window.location.href = `/process_scan?track=${encodeURIComponent(qrCode.data)}`;
+                    } else {
+                        message.textContent = "❌ Geen geldige QR-code gevonden!";
+                    }
+                };
             };
-
-            navigator.mediaDevices.getUserMedia(constraints)
-                .then((stream) => {
-                    video.srcObject = stream;
-                    console.log("✅ Camera gestart! Gebruik achterkant:", useBackCamera);
-                    scanQRCode();
-                })
-                .catch((error) => {
-                    message.textContent = "❌ Kan geen camera openen!";
-                    console.error("❌ Camera fout:", error);
-                });
-        }
-
-        function scanQRCode() {
-            console.log("🔄 Start QR-scan...");
-            const canvasElement = document.createElement("canvas");
-            const canvas = canvasElement.getContext("2d");
-
-            setInterval(() => {
-                if (!video.videoWidth || !video.videoHeight) {
-                    console.warn("⚠️ Video niet geladen, wacht...");
-                    return;
-                }
-
-                canvasElement.width = video.videoWidth;
-                canvasElement.height = video.videoHeight;
-                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-
-                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
-
-                if (qrCode) {
-                    console.log(`✅ QR-code gevonden: ${qrCode.data}`);
-                    message.textContent = "✅ QR-code gescand!";
-                    window.location.href = `/process_scan?track=${encodeURIComponent(qrCode.data)}`;
-                }
-            }, 500);
-        }
+            reader.readAsDataURL(file);
+        });
     </script>
 </body>
 </html>
