@@ -24,6 +24,14 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 def home():
     return render_template("home.html")
 
+# De QR-scannerpagina
+@app.route('/scan')
+def scan():
+    return render_template("scan.html")  
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5500)
+
 # 🔹 Spotify OAuth Login
 @app.route('/login')
 def login():
