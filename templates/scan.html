@@ -9,21 +9,31 @@
         body {
             text-align: center;
             font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1DB954, #191414);
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
         }
         #video {
             width: 100%;
             max-width: 400px;
-            border: 2px solid black;
+            border: 2px solid white;
         }
         #scan-button {
             display: block;
             margin: 20px auto;
             padding: 10px 20px;
             font-size: 18px;
-            background-color: #4CAF50;
+            background-color: #1DB954;
             color: white;
             border: none;
             cursor: pointer;
+            border-radius: 5px;
         }
         #message {
             margin-top: 20px;
@@ -68,7 +78,8 @@
                 const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
 
                 if (qrCode) {
-                    window.location.href = `/process_scan?track=${qrCode.data}`;
+                    console.log(`✅ QR-code gevonden: ${qrCode.data}`);
+                    window.location.href = `/process_scan?track=${encodeURIComponent(qrCode.data)}`;
                 }
             }, 500);
         }
