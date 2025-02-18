@@ -19,20 +19,25 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
 
-# 🎵 Hoofdpagina - Welkom en verbind met Spotify
+# 🎵 Hoofdpagina
 @app.route('/')
 def home():
     return render_template("home.html")
 
-# 📌 De QR-scannerpagina
+# 🔹 QR-Scanner pagina
 @app.route('/scan')
-def scan():
+def scan_page():
+    return render_template("scan.html")
+
+# 🔹 Verwerk gescande QR-code
+@app.route('/process_scan')
+def process_scan():
     track_id = request.args.get("track")
-    
+
     if not track_id:
         return "❌ Geen track ID gevonden!", 400
-    
-    # 🔄 Redirect naar de juiste afspeelpagina
+
+    # 🔄 Redirect naar de afspeelpagina
     return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
 
 # 🔹 Spotify OAuth Login
@@ -87,9 +92,9 @@ def play(track_id):
     devices = device_response.json().get("devices", [])
 
     if not devices:
-        return '❌ Geen actieve Spotify apparaten gevonden! Zorg dat Spotify is geopend en speel iets af. <a href="spotify://">Open Spotify</a>', 400
+        return render_template("open_spotify.html", track_id=track_id)
 
-    # **Stap 2: Selecteer een actief apparaat of forceer het eerste apparaat**
+    # **Stap 2: Selecteer een actief apparaat**
     device_id = next((d["id"] for d in devices if d["is_active"]), None)
 
     if not device_id:
@@ -107,18 +112,7 @@ def play(track_id):
 
     print(f"✅ Spotify sessie verplaatst naar apparaat: {device_id}")
 
-    # **Stap 4: Controleer of de speler actief is**
-    player_response = requests.get("https://api.spotify.com/v1/me/player", headers=headers)
-
-    if player_response.status_code != 200:
-        return f"❌ Fout bij ophalen van player status: {player_response.status_code} {player_response.text}", 500
-
-    player_state = player_response.json()
-
-    if not player_state.get("is_playing"):
-        print("⚠️ Spotify is niet actief! Probeer handmatig iets af te spelen.")
-
-    # **Stap 5: Start het afspelen op het geselecteerde apparaat**
+    # **Stap 4: Start het afspelen op het geselecteerde apparaat**
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
     response = requests.put(play_url, headers=headers, json={"uris": [f"spotify:track:{track_id}"]})
 
@@ -127,6 +121,5 @@ def play(track_id):
     else:
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
 
-# 📌 **Correcte plaats voor `if __name__ == '__main__':`**
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
