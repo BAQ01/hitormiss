@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Hidden Player</title>
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+</head>
+<body>
+    <h1>Muziek wordt afgespeeld...</h1>
+    <button onclick="playTrack()">Druk om af te spelen</button>
+
+    <script>
+        let player;
+        let device_id;
+
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            const token = "{{ session['token_info']['access_token'] }}";
+            console.log("✅ Spotify Web SDK geladen!");
+
+            player = new Spotify.Player({
+                name: 'Hidden Player',
+                getOAuthToken: cb => { cb(token); },
+                volume: 0.5
+            });
+
+            player.addListener('ready', ({ device_id: id }) => {
+                console.log('✅ Device is ready:', id);
+                device_id = id;
+                sessionStorage.setItem('spotifyDeviceId', id);
+            });
+
+            player.addListener('not_ready', ({ device_id }) => {
+                console.warn('⚠️ Device is not ready:', device_id);
+            });
+
+            player.addListener('initialization_error', ({ message }) => {
+                console.error('❌ Initialization error:', message);
+            });
+
+            player.addListener('authentication_error', ({ message }) => {
+                console.error('❌ Authentication error:', message);
+            });
+
+            player.addListener('account_error', ({ message }) => {
+                console.error('❌ Account error:', message);
+            });
+
+            player.connect();
+        };
+
+        function playTrack() {
+            const token = "{{ session['token_info']['access_token'] }}";
+            const track_id = "{{ track_id }}";
+            const stored_device_id = sessionStorage.getItem('spotifyDeviceId');
+
+            if (!stored_device_id) {
+                console.error("❌ Geen Spotify Device ID gevonden! Probeer Spotify te herstarten.");
+                return;
+            }
+
+            console.log(`🎵 Probeer track te spelen: ${track_id} op device ${stored_device_id}`);
+
+            fetch(`https://api.spotify.com/v1/me/player/play?device_id=${stored_device_id}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ "uris": [`spotify:track:${track_id}`] })
+            })
+            .then(response => {
+                if (response.status === 204) {
+                    console.log("✅ Track succesvol gestart!");
+                } else {
+                    console.error("❌ Fout bij afspelen:", response.status, response.statusText);
+                    response.json().then(data => console.error("🔍 Fout details:", data));
+                }
+            })
+            .catch(error => {
+                console.error("❌ Fout bij verzoek:", error);
+            });
+        }
+    </script>
+</body>
+</html>

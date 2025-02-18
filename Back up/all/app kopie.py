@@ -19,10 +19,10 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
 
-# 🎵 Hoofdpagina - Welkom en verbind met Spotify
+# 🔹 Hoofdpagina - Vraag login aan
 @app.route('/')
 def home():
-    return render_template("index.html")
+    return '<a href="/login">Log in met Spotify</a>'
 
 # 🔹 Spotify OAuth Login
 @app.route('/login')
@@ -32,6 +32,8 @@ def login():
 
 # 🔹 Callback - Haal access token op
 @app.route('/callback')
+@app.route('/callback')
+
 def callback():
     session.clear()
     code = request.args.get('code')
@@ -40,19 +42,21 @@ def callback():
         return "❌ Geen code ontvangen van Spotify!", 400
 
     try:
-        token_info = sp_oauth.get_access_token(code, as_dict=True)
-        print(f"✅ Token ontvangen: {token_info}")  
-        session["token_info"] = dict(token_info)  
+        token_info = sp_oauth.get_access_token(code, as_dict=True)  # ✅ Forceer dictionary
+        print(f"✅ Token ontvangen: {token_info}")  # Debugging log
+        session["token_info"] = dict(token_info)  # ✅ Zorg ervoor dat het een dictionary blijft
     except Exception as e:
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
 
     return redirect("/player")
 
-# 🔹 Spelerpagina
+# 🔹 Voeg deze route toe boven de /play/<track_id> route
 @app.route('/player')
 def player():
     return "✅ Spotify is ingelogd! Maar je moet een track ID selecteren."
+
+import requests
 
 @app.route('/play/<track_id>')
 def play(track_id):
@@ -78,7 +82,7 @@ def play(track_id):
     if not devices:
         return '❌ Geen actieve Spotify apparaten gevonden! Zorg dat Spotify is geopend en speel iets af. <a href="spotify://">Open Spotify</a>', 400
 
-    # **Stap 2: Selecteer een actief apparaat of forceer het eerste apparaat**
+    # **Stap 2: Selecteer een geldig apparaat**
     device_id = next((d["id"] for d in devices if d["is_active"]), None)
 
     if not device_id:
@@ -87,7 +91,7 @@ def play(track_id):
 
     # **Stap 3: Forceer Spotify om naar dit apparaat te schakelen**
     transfer_url = "https://api.spotify.com/v1/me/player"
-    transfer_payload = {"device_ids": [device_id]}  
+    transfer_payload = {"device_ids": [device_id]}  # Zorg ervoor dat dit een lijst is
 
     transfer_response = requests.put(transfer_url, headers=headers, json=transfer_payload)
 
@@ -115,6 +119,7 @@ def play(track_id):
         return f"🎵 Track {track_id} wordt afgespeeld op apparaat {device_id}!"
     else:
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
+    
     
 if __name__ == '__main__':
     app.run(debug=True, port=5500)

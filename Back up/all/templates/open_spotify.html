@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Spotify</title>
+</head>
+<body>
+    <h1>Spotify is niet geopend!</h1>
+    <p>We openen Spotify voor je. Als de muziek niet begint, klik dan <a href="spotify://">hier</a> om Spotify handmatig te openen.</p>
+
+    <script>
+        // 🔥 Probeer Spotify te openen
+        window.location.href = "spotify://";
+
+        // 🔄 Wacht 5 seconden en probeer dan opnieuw de track af te spelen
+        setTimeout(function() {
+            window.location.href = "/play/{{ track_id }}";
+        }, 5000);
+    </script>
+</body>
+</html>
