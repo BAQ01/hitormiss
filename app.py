@@ -26,12 +26,11 @@ def get_spotify_oauth():
 
 sp_oauth = get_spotify_oauth()
 
-# 🎵 **Startpagina**
+# 🎵 **Startpagina: Spotify moet elke keer opnieuw verbonden worden**
 @app.route('/')
 def home():
-    token_info = session.get("token_info")
-    logged_in = token_info and "access_token" in token_info
-    return render_template("home.html", logged_in=logged_in)
+    session.clear()  # ❌ Sessie wissen om Spotify opnieuw te verbinden
+    return render_template("home.html", logged_in=False)
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
@@ -57,7 +56,8 @@ def login():
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
 def callback():
-    session.clear()  
+    session.clear()  # ❌ Wis de sessie om een nieuwe login te forceren
+    
     code = request.args.get('code')
 
     if not code:
