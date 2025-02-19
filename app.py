@@ -11,7 +11,7 @@ app.config['SESSION_COOKIE_NAME'] = "SpotifyLogin"
 
 SPOTIPY_CLIENT_ID = "523d90f864664cb7b8bde95b200b653e"
 SPOTIPY_CLIENT_SECRET = "cbd38ca3e0414011869bb300332ba43c"
-SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"  # ✅ Render URL
+SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"
 
 scope = "user-read-playback-state user-modify-playback-state streaming"
 
@@ -43,14 +43,17 @@ def process_scan():
     if not track_id:
         return "❌ Geen track ID gevonden!", 400
 
-    # 🔄 Redirect naar de afspeelpagina
     return redirect(url_for("play", track_id=track_id))
 
-# 🔹 **Spotify OAuth Login (Nu via browser)**
+# 🔹 **Spotify OAuth Login (Via mobiele app forceren)**
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)  # 🚀 Open de Spotify login-pagina in de browser
+
+    # **Probeer Spotify in de mobiele app te openen**
+    mobile_auth_url = f"spotify://authorize?{auth_url.split('?')[1]}"
+    
+    return redirect(mobile_auth_url)
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
@@ -69,7 +72,7 @@ def callback():
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
 
-    return redirect(url_for("home"))  # ✅ TERUG NAAR HOME
+    return redirect(url_for("scan_page"))  # ✅ Direct naar QR-scan na login
 
 # 🔹 **Forceer Spotify op de telefoon en speel af**
 @app.route('/play/<track_id>')
