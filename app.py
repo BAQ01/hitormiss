@@ -33,6 +33,21 @@ def home():
     logged_in = token_info and "access_token" in token_info
     return render_template("home.html", logged_in=logged_in)
 
+# 🔹 **QR-Scanner pagina**
+@app.route('/scan')
+def scan_page():
+    return render_template("scan.html")
+
+# 🔹 **Verwerk gescande QR-code**
+@app.route('/process_scan')
+def process_scan():
+    track_id = request.args.get("track")
+
+    if not track_id:
+        return "❌ Geen track ID gevonden!", 400
+
+    return redirect(url_for("play", track_id=track_id))
+
 # 🔹 **Spotify OAuth Login**
 @app.route('/login')
 def login():
