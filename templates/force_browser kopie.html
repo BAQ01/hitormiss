@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Login</title>
+    <script>
+        function openInBrowser() {
+            const authUrl = "{{ auth_url }}";
+
+            // Forceer openen in standaardbrowser
+            window.open(authUrl, "_blank");
+
+            // Redirect als fallback na 5 seconden
+            setTimeout(() => {
+                window.location.href = authUrl;
+            }, 5000);
+        }
+    </script>
+</head>
+<body onload="openInBrowser()">
+    <h1>⏳ Verbinden met Spotify...</h1>
+    <p>Als de login niet automatisch opent, klik <a href="{{ auth_url }}">hier</a>.</p>
+</body>
+</html>
