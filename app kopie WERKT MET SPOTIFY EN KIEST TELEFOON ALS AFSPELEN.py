@@ -88,53 +88,75 @@ def get_token():
 def play(track_id):
     access_token = get_token()
     if not access_token:
-        return redirect(url_for("login"))
+        return redirect(url_for("login"))  # 🚀 Forceer herlogin als er geen token is
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
 
-    # 🔥 **Stap 1: Detecteer of de gebruiker een iPhone of Android gebruikt**
+    # 🔍 **Stap 1: Detecteer welk apparaat de gebruiker gebruikt via User-Agent**
     user_agent = request.headers.get('User-Agent', '').lower()
+    print(f"🔍 User-Agent: {user_agent}")
+
     if "iphone" in user_agent:
         phone_type = "iPhone"
     elif "android" in user_agent:
         phone_type = "Android"
     else:
-        phone_type = None  # Niet herkend
+        phone_type = None  # ❌ Geen telefoon herkend
 
-    # 🔥 **Stap 2: Haal apparaten op en zoek de telefoon**
+    # 🔥 **Stap 2: Haal de beschikbare Spotify apparaten op**
     device_response = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
+
     if device_response.status_code != 200:
         return f"❌ Fout bij ophalen van apparaten: {device_response.status_code} {device_response.text}", 500
 
     devices = device_response.json().get("devices", [])
+
+    if not devices:
+        return ('❌ Geen actieve Spotify apparaten gevonden!<br>'
+                '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
+
+    # 🔥 **Stap 3: Selecteer ALLEEN het apparaat dat matcht met het User-Agent**
     device_id = None
 
     for d in devices:
-        if phone_type == "iPhone" and "iphone" in d["name"].lower():
+        device_name = d["name"].lower()
+        print(f"📱 Beschikbaar apparaat: {d['name']} ({d['type']})")
+
+        if phone_type == "iPhone" and "iphone" in device_name:
             device_id = d["id"]
             break
-        elif phone_type == "Android" and "android" in d["name"].lower():
+        elif phone_type == "Android" and "android" in device_name:
             device_id = d["id"]
             break
 
     if not device_id:
-        return ('❌ Geen mobiel apparaat gevonden!<br>'
+        return ('❌ Geen juiste telefoon gevonden!<br>'
                 '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
 
-    print(f"✅ Geselecteerd apparaat: {device_id} (via User-Agent: {phone_type})")
+    print(f"✅ Geselecteerd apparaat: {device_id} (Gebaseerd op User-Agent: {phone_type})")
 
-    # 🔥 **Stap 3: Forceer Spotify om de telefoon als actieve speler te gebruiken**
+    # 🔥 **Stap 4: Forceer Spotify om naar de juiste telefoon te schakelen**
     transfer_url = "https://api.spotify.com/v1/me/player"
-    transfer_payload = {"device_ids": [device_id]}
-    requests.put(transfer_url, headers=headers, json=transfer_payload)
+    transfer_payload = {"device_ids": [device_id]}  
 
-    print(f"✅ Spotify sessie overgezet naar apparaat: {device_id}")
+    transfer_response = requests.put(transfer_url, headers=headers, json=transfer_payload)
 
-    # 🔥 **Stap 4: Redirect naar de Spotify deeplink**
-    return redirect(f"https://open.spotify.com/track/{track_id}")
+    if transfer_response.status_code not in [200, 204]:
+        return f"⚠️ Kan Spotify niet verplaatsen: {transfer_response.status_code} {transfer_response.text}", 500
+
+    print(f"✅ Spotify sessie verplaatst naar apparaat: {device_id}")
+
+    # 🔥 **Stap 5: Start het afspelen van de gewenste track**
+    play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
+    response = requests.put(play_url, headers=headers, json={"uris": [f"spotify:track:{track_id}"]})
+
+    if response.status_code == 204:
+        return f"🎵 Track {track_id} wordt afgespeeld op jouw telefoon ({phone_type})!"
+    else:
+        return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
