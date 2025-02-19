@@ -19,16 +19,18 @@ def get_spotify_oauth():
     return SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         client_secret=SPOTIPY_CLIENT_SECRET,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
-                        scope=scope)
+                        scope=scope,
+                        show_dialog=True)  # ✅ Forceer Spotify login bij elke keer opstarten
 
 sp_oauth = get_spotify_oauth()
 
 # 🎵 **Startpagina: Toon een login knop**
 @app.route('/')
 def home():
-    session.clear()  # ❌ Wis de sessie bij elk bezoek
+    token_info = session.get("token_info")
+    logged_in = token_info and "access_token" in token_info
 
-    return render_template("home.html", logged_in=False)
+    return render_template("home.html", logged_in=logged_in)
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
@@ -45,18 +47,16 @@ def process_scan():
 
     return redirect(url_for("play", track_id=track_id))
 
-# 🔹 **Spotify OAuth Login (Forceer mobiele app indien mogelijk)**
+# 🔹 **Spotify OAuth Login**
 @app.route('/login')
 def login():
-    sp_oauth = get_spotify_oauth()  # ✅ Zorg ervoor dat SpotifyOAuth een redirect URI bevat
     auth_url = sp_oauth.get_authorize_url()
-    return render_template("force_browser.html", auth_url=auth_url)
+    return redirect(auth_url)
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
 def callback():
-    sp_oauth = get_spotify_oauth()  # ✅ Zorg ervoor dat SpotifyOAuth correct is geladen
-    session.clear()
+    session.clear()  # ❌ Wis de sessie om een nieuwe login te forceren
     
     code = request.args.get('code')
     if not code:
@@ -72,12 +72,21 @@ def callback():
 
     return redirect(url_for("home"))  # ✅ Keer terug naar de homepagina
 
-# 🔹 **Forceer Spotify op de telefoon en speel af**
+# 🔹 **Verkrijg Spotify Token (met refresh)**
+def get_token():
+    token_info = session.get("token_info")
+    if not token_info:
+        return None
+
+    if sp_oauth.is_token_expired(token_info):
+        token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
+        session["token_info"] = token_info  # Sla het nieuwe token op
+    return token_info["access_token"]
+
+# 🔹 **Speel een track af op een mobiel apparaat**
 @app.route('/play/<track_id>')
 def play(track_id):
-    token_info = session.get("token_info", {})
-    access_token = token_info.get("access_token")
-
+    access_token = get_token()
     if not access_token:
         return redirect(url_for("login"))  # 🚀 Forceer herlogin als er geen token is
 
