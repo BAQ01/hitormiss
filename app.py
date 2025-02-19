@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, session, render_template
+from flask import Flask, request, redirect, session, render_template, url_for
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
@@ -19,17 +19,17 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
 
-# 🎵 Hoofdpagina
+# 🎵 **Forceer login bij het starten van de app**
 @app.route('/')
 def home():
-    return render_template("home.html")
+    return redirect(url_for('login'))  # 🚀 Automatisch omleiden naar Spotify login
 
-# 🔹 QR-Scanner pagina
+# 🔹 **QR-Scanner pagina (wordt geopend na inloggen)**
 @app.route('/scan')
 def scan_page():
     return render_template("scan.html")
 
-# 🔹 Verwerk gescande QR-code
+# 🔹 **Verwerk gescande QR-code**
 @app.route('/process_scan')
 def process_scan():
     track_id = request.args.get("track")
@@ -40,13 +40,13 @@ def process_scan():
     # 🔄 Redirect naar de afspeelpagina
     return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
 
-# 🔹 Spotify OAuth Login
+# 🔹 **Spotify OAuth Login**
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
 
-# 🔹 Callback - Haal access token op
+# 🔹 **Callback - Haal access token op en open QR-scanner**
 @app.route('/callback')
 def callback():
     session.clear()
@@ -63,13 +63,14 @@ def callback():
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
 
-    return redirect("/player")
+    return redirect(url_for("scan_page"))  # 🚀 Open direct QR-scanner
 
-# 🔹 Spelerpagina
+# 🔹 **Spelerpagina (voor testen, niet direct nodig)**
 @app.route('/player')
 def player():
     return "✅ Spotify is ingelogd! Maar je moet een track ID selecteren."
 
+# 🔹 **Forceer Spotify op de telefoon en speel af**
 @app.route('/play/<track_id>')
 def play(track_id):
     token_info = session.get("token_info", {})
@@ -83,7 +84,7 @@ def play(track_id):
         "Content-Type": "application/json",
     }
 
-    # 🔥 **Stap 1: Haal alle apparaten op**
+    # 🔥 **Stap 1: Zoek actieve apparaten**
     device_response = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
 
     if device_response.status_code != 200:
@@ -94,24 +95,19 @@ def play(track_id):
     if not devices:
         return '❌ Geen actieve Spotify apparaten gevonden! Open Spotify op je telefoon en speel iets af.', 400
 
-    # 🔹 **Stap 2: Selecteer een mobiel apparaat als prioriteit**
+    # 🔹 **Stap 2: Zoek en forceer mobiel apparaat**
     device_id = None
-    for device in devices:
-        if device["type"] == "Smartphone":  # 🎯 Selecteer ALTIJD een mobiel apparaat
-            device_id = device["id"]
+    for d in devices:
+        if "phone" in d["type"].lower():  # 🎯 Koppel ALTIJD een mobiel apparaat als prioriteit
+            device_id = d["id"]
             break
 
-    # 🔹 **Als er geen mobiel apparaat is, pak een ander actief apparaat**
     if not device_id:
-        device_id = next((d["id"] for d in devices if d["is_active"]), None)
-
-    # ❌ Als er nog steeds geen apparaat is, neem het eerste beschikbare apparaat
-    if not device_id:
-        device_id = devices[0]["id"]  # Fallback
+        return "❌ Geen mobiel apparaat gevonden. Open Spotify op je telefoon en speel iets af.", 400
 
     print(f"✅ Geselecteerd apparaat: {device_id}")
 
-    # **Stap 3: Forceer Spotify om naar dit apparaat te schakelen**
+    # 🔹 **Stap 3: Forceer Spotify om naar de telefoon te schakelen**
     transfer_url = "https://api.spotify.com/v1/me/player"
     transfer_payload = {"device_ids": [device_id]}  
 
@@ -122,7 +118,7 @@ def play(track_id):
 
     print(f"✅ Spotify sessie verplaatst naar apparaat: {device_id}")
 
-    # **Stap 4: Start het afspelen op het geselecteerde apparaat**
+    # 🔹 **Stap 4: Start het afspelen op het geselecteerde apparaat**
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
     response = requests.put(play_url, headers=headers, json={"uris": [f"spotify:track:{track_id}"]})
 
@@ -130,6 +126,6 @@ def play(track_id):
         return f"🎵 Track {track_id} wordt afgespeeld op apparaat {device_id}!"
     else:
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
-    
+
 if __name__ == '__main__':
     app.run(debug=True, port=5500)
