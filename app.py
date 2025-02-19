@@ -23,12 +23,9 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 # 🎵 **Startpagina: Toon een login knop**
 @app.route('/')
 def home():
-    token_info = session.get("token_info")
+    session.clear()  # ❌ Wis de sessie bij elk bezoek
 
-    if token_info and "access_token" in token_info:
-        return render_template("home.html", logged_in=True)
-    else:
-        return render_template("home.html", logged_in=False)
+    return render_template("home.html", logged_in=False)
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
