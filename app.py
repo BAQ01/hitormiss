@@ -20,11 +20,10 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
 
-# 🎵 **Forceer login via Spotify app**
+# 🎵 **Startpagina: Toon een login knop**
 @app.route('/')
 def home():
-    auth_url = f"spotify://oauth?client_id={SPOTIPY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIPY_REDIRECT_URI}&scope={scope}"
-    return redirect(auth_url)  # 🚀 Forceer Spotify app op mobiel
+    return render_template("home.html")  # 🔗 Toon login knop i.p.v. directe Spotify redirect
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
@@ -42,11 +41,11 @@ def process_scan():
     # 🔄 Redirect naar de afspeelpagina
     return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
 
-# 🔹 **Spotify OAuth Login (Fallback voor desktopgebruikers)**
+# 🔹 **Spotify OAuth Login (Nu via browser)**
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
+    return redirect(auth_url)  # 🚀 Open Spotify login in de browser
 
 # 🔹 **Callback - Haal access token op en open QR-scanner**
 @app.route('/callback')
@@ -74,7 +73,7 @@ def play(track_id):
     access_token = token_info.get("access_token")
 
     if not access_token:
-        return "❌ Geen Spotify token beschikbaar. Log opnieuw in.", 401
+        return redirect(url_for("login"))  # 🚀 Forceer herlogin als er geen token is
 
     headers = {
         "Authorization": f"Bearer {access_token}",
