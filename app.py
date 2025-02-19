@@ -3,6 +3,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 import requests
+import time
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -19,12 +20,13 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
 
-# 🎵 **Forceer login bij het starten van de app**
+# 🎵 **Forceer login via Spotify app**
 @app.route('/')
 def home():
-    return redirect(url_for('login'))  # 🚀 Automatisch omleiden naar Spotify login
+    auth_url = f"spotify://oauth?client_id={SPOTIPY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIPY_REDIRECT_URI}&scope={scope}"
+    return redirect(auth_url)  # 🚀 Forceer Spotify app op mobiel
 
-# 🔹 **QR-Scanner pagina (wordt geopend na inloggen)**
+# 🔹 **QR-Scanner pagina**
 @app.route('/scan')
 def scan_page():
     return render_template("scan.html")
@@ -40,7 +42,7 @@ def process_scan():
     # 🔄 Redirect naar de afspeelpagina
     return redirect(f"https://hitormiss.onrender.com/play/{track_id}")
 
-# 🔹 **Spotify OAuth Login**
+# 🔹 **Spotify OAuth Login (Fallback voor desktopgebruikers)**
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
@@ -65,11 +67,6 @@ def callback():
 
     return redirect(url_for("scan_page"))  # 🚀 Open direct QR-scanner
 
-# 🔹 **Spelerpagina (voor testen, niet direct nodig)**
-@app.route('/player')
-def player():
-    return "✅ Spotify is ingelogd! Maar je moet een track ID selecteren."
-
 # 🔹 **Forceer Spotify op de telefoon en speel af**
 @app.route('/play/<track_id>')
 def play(track_id):
@@ -93,17 +90,20 @@ def play(track_id):
     devices = device_response.json().get("devices", [])
 
     if not devices:
-        return '❌ Geen actieve Spotify apparaten gevonden! Open Spotify op je telefoon en speel iets af.', 400
+        return ('❌ Geen actieve Spotify apparaten gevonden!<br>'
+                '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
 
     # 🔹 **Stap 2: Zoek en forceer mobiel apparaat**
     device_id = None
     for d in devices:
-        if "phone" in d["type"].lower():  # 🎯 Koppel ALTIJD een mobiel apparaat als prioriteit
+        device_type = d["type"].lower()
+        if "phone" in device_type or "mobile" in device_type or "smartphone" in device_type:
             device_id = d["id"]
             break
 
     if not device_id:
-        return "❌ Geen mobiel apparaat gevonden. Open Spotify op je telefoon en speel iets af.", 400
+        return ('❌ Geen mobiel apparaat gevonden!<br>'
+                '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
 
     print(f"✅ Geselecteerd apparaat: {device_id}")
 
@@ -118,7 +118,16 @@ def play(track_id):
 
     print(f"✅ Spotify sessie verplaatst naar apparaat: {device_id}")
 
-    # 🔹 **Stap 4: Start het afspelen op het geselecteerde apparaat**
+    # **Stap 4: Dummy track afspelen om apparaat te activeren**
+    dummy_track = "spotify:track:7xGfFoTpQ2E7fRF5lN10tr"  # 🎵 Random track (Leeg/Low Volume)
+    play_dummy_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
+    
+    requests.put(play_dummy_url, headers=headers, json={"uris": [dummy_track]})
+    print("🔸 Dummy track gestart om apparaat te activeren.")
+
+    time.sleep(2)  # ⏳ 2 seconden wachten
+
+    # **Stap 5: Start het afspelen van de echte track**
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
     response = requests.put(play_url, headers=headers, json={"uris": [f"spotify:track:{track_id}"]})
 
