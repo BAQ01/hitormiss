@@ -42,15 +42,15 @@ def process_scan():
 
     return redirect(url_for("play", track_id=track_id))
 
-# 🔹 **Spotify OAuth Login (Via mobiele app forceren)**
+# 🔹 **Spotify OAuth Login (Forceer mobiele app indien mogelijk)**
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
 
-    # **Probeer Spotify in de mobiele app te openen**
-    mobile_auth_url = f"spotify://authorize?{auth_url.split('?')[1]}"
-    
-    return redirect(mobile_auth_url)
+    # 📱 Probeer de Spotify-app direct te openen
+    mobile_auth_url = f"spotify:oauth2:{auth_url}"
+
+    return render_template("open_spotify.html", mobile_auth_url=mobile_auth_url, fallback_url=auth_url)
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')

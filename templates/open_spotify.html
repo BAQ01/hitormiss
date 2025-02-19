@@ -3,47 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open Spotify</title>
-    <style>
-        body {
-            text-align: center;
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #1DB954, #191414);
-            color: white;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-        }
-        .button {
-            background-color: #1DB954;
-            color: white;
-            padding: 15px 30px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            border: none;
-            border-radius: 30px;
-            text-decoration: none;
-            display: inline-block;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-    <h1>Spotify is niet geopend!</h1>
-    <p>We proberen Spotify automatisch te openen. Als dit niet werkt, klik dan op de knop hieronder.</p>
-    
-    <a class="button" href="spotify://">📂 Open Spotify</a>
-
+    <title>Open Spotify Login</title>
     <script>
-        // 🔥 Probeer automatisch Spotify te openen
-        window.location.href = "spotify://";
+        function openSpotify() {
+            // Probeer eerst de mobiele Spotify-app te openen
+            window.location.href = "{{ mobile_auth_url }}";
 
-        // 🔄 Wacht 5 seconden en probeer dan opnieuw af te spelen
-        setTimeout(() => {
-            window.location.href = "/play/{{ track_id }}";
-        }, 5000);
+            // Fallback na 3 seconden als Spotify-app niet opent
+            setTimeout(function() {
+                window.location.href = "{{ fallback_url }}";
+            }, 3000);
+        }
     </script>
+</head>
+<body onload="openSpotify()">
+    <h1>⏳ Bezig met verbinden met Spotify...</h1>
+    <p>Als de Spotify-app niet opent, klik <a href="{{ fallback_url }}">hier</a>.</p>
 </body>
 </html>
