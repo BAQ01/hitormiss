@@ -15,10 +15,13 @@ SPOTIPY_REDIRECT_URI = "https://hitormiss.onrender.com/callback"
 
 scope = "user-read-playback-state user-modify-playback-state streaming"
 
-sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
+def get_spotify_oauth():
+    return SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
                         client_secret=SPOTIPY_CLIENT_SECRET,
                         redirect_uri=SPOTIPY_REDIRECT_URI,
                         scope=scope)
+
+sp_oauth = get_spotify_oauth()
 
 # 🎵 **Startpagina: Toon een login knop**
 @app.route('/')
@@ -45,15 +48,17 @@ def process_scan():
 # 🔹 **Spotify OAuth Login (Forceer mobiele app indien mogelijk)**
 @app.route('/login')
 def login():
+    sp_oauth = get_spotify_oauth()  # ✅ Zorg ervoor dat SpotifyOAuth een redirect URI bevat
     auth_url = sp_oauth.get_authorize_url()
     return render_template("force_browser.html", auth_url=auth_url)
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
 def callback():
+    sp_oauth = get_spotify_oauth()  # ✅ Zorg ervoor dat SpotifyOAuth correct is geladen
     session.clear()
+    
     code = request.args.get('code')
-
     if not code:
         return "❌ Geen code ontvangen van Spotify!", 400
 
@@ -65,7 +70,7 @@ def callback():
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
 
-    return redirect(url_for("scan_page"))  # ✅ Direct naar QR-scan na login
+    return redirect(url_for("home"))  # ✅ Keer terug naar de homepagina
 
 # 🔹 **Forceer Spotify op de telefoon en speel af**
 @app.route('/play/<track_id>')
