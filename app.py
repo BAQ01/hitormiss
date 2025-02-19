@@ -23,7 +23,12 @@ sp_oauth = SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
 # 🎵 **Startpagina: Toon een login knop**
 @app.route('/')
 def home():
-    return render_template("home.html")
+    token_info = session.get("token_info")
+
+    if token_info and "access_token" in token_info:
+        return render_template("home.html", logged_in=True)
+    else:
+        return render_template("home.html", logged_in=False)
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
@@ -45,7 +50,7 @@ def process_scan():
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)  # 🚀 Open Spotify login in de browser
+    return redirect(auth_url)  # 🚀 Open de Spotify login-pagina in de browser
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
@@ -58,13 +63,13 @@ def callback():
 
     try:
         token_info = sp_oauth.get_access_token(code, as_dict=True)
-        print(f"✅ Token ontvangen: {token_info}")  
-        session["token_info"] = dict(token_info)  
+        session["token_info"] = dict(token_info)
+        print(f"✅ Token opgeslagen in sessie: {session['token_info']}")
     except Exception as e:
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
 
-    return redirect(url_for("home"))  # ✅ TERUG NAAR HOME NA LOGIN!
+    return redirect(url_for("home"))  # ✅ TERUG NAAR HOME
 
 # 🔹 **Forceer Spotify op de telefoon en speel af**
 @app.route('/play/<track_id>')
