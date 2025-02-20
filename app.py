@@ -29,8 +29,9 @@ sp_oauth = get_spotify_oauth()
 # 🎵 **Startpagina: Spotify moet elke keer opnieuw verbonden worden**
 @app.route('/')
 def home():
-    session.clear()  # ❌ Sessie wissen om Spotify opnieuw te verbinden
-    return render_template("home.html", logged_in=False)
+    token_info = session.get("token_info")
+    logged_in = token_info and "access_token" in token_info  # ✅ Check hier correct of er een token is
+    return render_template("home.html", logged_in=logged_in)
 
 # 🔹 **QR-Scanner pagina**
 @app.route('/scan')
@@ -51,45 +52,48 @@ def process_scan():
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
+    return render_template("force_browser.html", auth_url=auth_url)  # ✅ Zorgt dat de juiste pagina opent
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
 def callback():
-    session.clear()  # ❌ Wis de sessie om een nieuwe login te forceren
-    
-    code = request.args.get('code')
+    # ❗ Sessie NIET wissen hier, anders blijft login vastlopen
+    if "token_info" in session:
+        session.pop("token_info")  # Oude token verwijderen, maar niet hele sessie wissen
 
-    if not code:
+    code = request.args.get('code')  # ✅ Code moet altijd worden opgehaald
+
+    if not code:  # 🔄 Controleer HIER pas of de code mist
         return "❌ Geen code ontvangen van Spotify!", 400
 
     try:
         token_info = sp_oauth.get_access_token(code, as_dict=True)
-        session["token_info"] = dict(token_info)
+        session["token_info"] = token_info  # ✅ Zorg dat dit correct wordt opgeslagen
         print(f"✅ Token opgeslagen: {session['token_info']}")
     except Exception as e:
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
+
 
     return redirect(url_for("home"))
 
 # 🔹 **Verkrijg of vernieuw Spotify Token**
 def get_token():
     token_info = session.get("token_info")
-
     if not token_info:
         print("❌ Geen opgeslagen token gevonden, opnieuw inloggen vereist.")
-        return None  
+        return None  # 🔄 Forceer opnieuw inloggen als er geen token is
 
-    if get_spotify_oauth().is_token_expired(token_info):
+    # ✅ Controleer of het token verlopen is en vernieuw het
+    if sp_oauth.is_token_expired(token_info):
         try:
-            token_info = get_spotify_oauth().refresh_access_token(token_info["refresh_token"])
-            session["token_info"] = token_info  
-            print("🔄 Token vernieuwd en opgeslagen.")
+            token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
+            session["token_info"] = token_info
+            print("🔄 Token vernieuwd en opgeslagen in sessie.")
         except Exception as e:
             print(f"❌ Fout bij vernieuwen van token: {e}")
-            session.clear()
-            return None  
+            session.clear()  # 🚨 Reset de sessie om foute tokens te verwijderen
+            return None  # 🔄 Forceer opnieuw inloggen
 
     return token_info["access_token"]
 
@@ -134,7 +138,16 @@ def play(track_id):
 
     print(f"✅ Geselecteerd apparaat: {device_id}")
 
-    # 🔥 **Stap 3: Forceer Spotify naar de telefoon en start meteen de juiste track**
+    # 🔹 **Stap 3B: Forceer Spotify om het geselecteerde apparaat te activeren**
+    activate_url = "https://api.spotify.com/v1/me/player"
+    activate_payload = {"device_ids": [device_id]}  # ✅ "play": True is HIER NIET nodig
+    activate_response = requests.put(activate_url, headers=headers, json=activate_payload)
+
+    if activate_response.status_code not in [200, 204]:
+        print(f"⚠️ Waarschuwing: Kan Spotify niet activeren: {activate_response.status_code} {activate_response.text}")
+        return f"❌ Fout bij activeren van apparaat: {activate_response.status_code} {activate_response.text}", 500
+   
+   # 🔥 **Stap 3: Forceer Spotify naar de telefoon en start meteen de juiste track**
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
     play_payload = {
         "uris": [f"spotify:track:{track_id}"],
@@ -149,4 +162,4 @@ def play(track_id):
         return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
 
 if __name__ == '__main__':
-    app.run(debug=False, port=5500)
+    app.run(debug=True, port=5500)

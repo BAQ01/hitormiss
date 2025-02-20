@@ -36,14 +36,12 @@
 <body>
     <h1>Welkom bij HITORMISS 🎵</h1>
 
-    <p>Verbind met Spotify om muziek direct af te spelen.</p>
-    <a href="/login" class="spotify-btn">🔗 Verbind Spotify</a>
-
     {% if logged_in %}
         <p>✅ Verbonden met Spotify!</p>
         <a href="/scan" class="spotify-btn">📷 Scan een QR-code</a>
     {% else %}
         <p>🔗 Verbind met Spotify om muziek af te spelen.</p>
+        <a href="/login" class="spotify-btn">🔗 Verbind Spotify</a>  <!-- 🔥 Correcte plek voor login-knop -->
     {% endif %}
 </body>
 </html>

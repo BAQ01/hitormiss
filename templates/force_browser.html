@@ -5,20 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Login</title>
     <script>
-        function openInBrowser() {
+        function openSpotifyAuth() {
             const authUrl = "{{ auth_url }}";
 
-            // Forceer openen in standaardbrowser
-            window.open(authUrl, "_blank");
+            // 🔹 Probeer Spotify in de app te openen (iOS/Android deep linking)
+            const spotifyAppUrl = authUrl.replace("https://accounts.spotify.com", "spotify://open.spotify.com");
 
-            // Redirect als fallback na 5 seconden
+            window.location.href = spotifyAppUrl;
+
+            // ⏳ Als de app niet opent binnen 3 seconden, gebruik dan de fallback (browser)
             setTimeout(() => {
-                window.location.href = authUrl;
-            }, 5000);
+                window.location.href = authUrl; // Open de normale Spotify loginpagina als backup
+            }, 3000);
         }
     </script>
 </head>
-<body onload="openInBrowser()">
+<body onload="openSpotifyAuth()">
     <h1>⏳ Verbinden met Spotify...</h1>
     <p>Als de login niet automatisch opent, klik <a href="{{ auth_url }}">hier</a>.</p>
 </body>
