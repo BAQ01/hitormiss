@@ -57,23 +57,21 @@ def login():
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
 def callback():
-    # ❗ Sessie NIET wissen hier, anders blijft login vastlopen
     if "token_info" in session:
-        session.pop("token_info")  # Oude token verwijderen, maar niet hele sessie wissen
+        session.pop("token_info")  # Oude token verwijderen
 
-    code = request.args.get('code')  # ✅ Code moet altijd worden opgehaald
+    code = request.args.get('code')  
 
-    if not code:  # 🔄 Controleer HIER pas of de code mist
+    if not code:
         return "❌ Geen code ontvangen van Spotify!", 400
 
     try:
         token_info = sp_oauth.get_access_token(code, as_dict=True)
-        session["token_info"] = token_info  # ✅ Zorg dat dit correct wordt opgeslagen
+        session["token_info"] = token_info  
         print(f"✅ Token opgeslagen: {session['token_info']}")
     except Exception as e:
         print(f"❌ Fout bij ophalen van token: {e}")
         return f"❌ Fout bij ophalen van token: {e}", 500
-
 
     return redirect(url_for("home"))
 
@@ -82,9 +80,8 @@ def get_token():
     token_info = session.get("token_info")
     if not token_info:
         print("❌ Geen opgeslagen token gevonden, opnieuw inloggen vereist.")
-        return None  # 🔄 Forceer opnieuw inloggen als er geen token is
+        return None  
 
-    # ✅ Controleer of het token verlopen is en vernieuw het
     if sp_oauth.is_token_expired(token_info):
         try:
             token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
@@ -92,74 +89,19 @@ def get_token():
             print("🔄 Token vernieuwd en opgeslagen in sessie.")
         except Exception as e:
             print(f"❌ Fout bij vernieuwen van token: {e}")
-            session.clear()  # 🚨 Reset de sessie om foute tokens te verwijderen
-            return None  # 🔄 Forceer opnieuw inloggen
+            session.clear()
+            return None  
 
     return token_info["access_token"]
 
 # 🔹 **Speel een track af op de telefoon waarmee gescand wordt**
 @app.route('/play/<track_id>')
 def play(track_id):
-    access_token = get_token()
-    if not access_token:
-        return redirect(url_for("login"))
+    # 🎯 Directe Spotify Deeplink genereren
+    track_url = f"spotify://track/{track_id}"
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    # 🔥 **Stap 1: Haal de beschikbare apparaten op**
-    device_response = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
-
-    if device_response.status_code != 200:
-        return f"❌ Fout bij ophalen van apparaten: {device_response.status_code} {device_response.text}", 500
-
-    devices = device_response.json().get("devices", [])
-
-    if not devices:
-        return ('❌ Geen actieve Spotify apparaten gevonden!<br>'
-                '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
-
-    # 🔥 **Stap 2: Kies de telefoon waarmee gescand wordt**
-    user_agent = request.headers.get('User-Agent', '').lower()
-    print(f"🔍 User-Agent: {user_agent}")
-
-    device_id = None
-
-    for d in devices:
-        if "phone" in d["type"].lower():
-            device_id = d["id"]
-            break
-
-    if not device_id:
-        return ('❌ Geen mobiel apparaat gevonden!<br>'
-                '📱 Open <a href="spotify://">Spotify op je telefoon</a> en speel iets af.', 400)
-
-    print(f"✅ Geselecteerd apparaat: {device_id}")
-
-    # 🔹 **Stap 3B: Forceer Spotify om het geselecteerde apparaat te activeren**
-    activate_url = "https://api.spotify.com/v1/me/player"
-    activate_payload = {"device_ids": [device_id]}  # ✅ "play": True is HIER NIET nodig
-    activate_response = requests.put(activate_url, headers=headers, json=activate_payload)
-
-    if activate_response.status_code not in [200, 204]:
-        print(f"⚠️ Waarschuwing: Kan Spotify niet activeren: {activate_response.status_code} {activate_response.text}")
-        return f"❌ Fout bij activeren van apparaat: {activate_response.status_code} {activate_response.text}", 500
-   
-   # 🔥 **Stap 3: Forceer Spotify naar de telefoon en start meteen de juiste track**
-    play_url = f"https://api.spotify.com/v1/me/player/play?device_id={device_id}"
-    play_payload = {
-        "uris": [f"spotify:track:{track_id}"],
-        "position_ms": 0
-    }
-
-    response = requests.put(play_url, headers=headers, json=play_payload)
-
-    if response.status_code in [204, 202]:
-        return f"🎵 Track {track_id} wordt afgespeeld op jouw telefoon!"
-    else:
-        return f"❌ Fout bij afspelen: {response.status_code} {response.text}", 500
+    # ✅ Open de track in Spotify, maar zorg dat Hit or Miss actief blijft
+    return render_template("keep_foreground.html", track_url=track_url)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5500)
+    app.run(debug=False, port=5500)  # ❗ Zet debug op False in productie!
