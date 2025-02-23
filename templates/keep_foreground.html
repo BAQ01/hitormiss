@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hit or Miss - Afspelen</title>
+    <title>Spotify wordt geopend...</title>
     <script>
         function openSpotify() {
-            window.location.href = "{{ track_url }}";  // Open Spotify track
+            var trackUrl = "{{ track_url }}";
+            window.location.href = trackUrl;
 
-            // ⏳ Wacht 2 seconden en keer terug naar Hit or Miss
+            // ✅ Keer na 3 seconden automatisch terug naar Hit or Miss
             setTimeout(() => {
-                window.location.href = "/scan";  // Terug naar QR scanner
-            }, 2000);
+                window.location.href = "/";  // ✅ Terug naar homepagina
+            }, 3000);
         }
     </script>
 </head>
 <body onload="openSpotify()">
-    <h1>🎵 Track wordt afgespeeld...</h1>
-    <p>Blijf in de Hit or Miss app om het spel te spelen.</p>
+    <h1>⏳ Je nummer wordt afgespeeld...</h1>
+    <p>Spotify wordt geopend. Blijf in de Hit or Miss-app.</p>
 </body>
 </html>
