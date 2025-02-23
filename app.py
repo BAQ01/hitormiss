@@ -52,7 +52,11 @@ def process_scan():
 @app.route('/login')
 def login():
     auth_url = sp_oauth.get_authorize_url()
-    return render_template("force_browser.html", auth_url=auth_url)  # ✅ Zorgt dat de juiste pagina opent
+
+    # 🔥 Probeer Spotify direct te openen via een deeplink
+    spotify_auth_url = f"spotify:open-url:{auth_url}"
+
+    return render_template("force_browser.html", auth_url=spotify_auth_url)
 
 # 🔹 **Callback - Haal access token op en keer terug naar startpagina**
 @app.route('/callback')
