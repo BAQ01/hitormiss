@@ -91,7 +91,6 @@ def home():
 def login():
     redirect_uri = get_redirect_uri()
     session['redirect_uri'] = redirect_uri
-    logger.info(f"Login: redirect_uri = {redirect_uri}")
     sp_oauth = get_spotify_oauth(redirect_uri)
     return redirect(sp_oauth.get_authorize_url())
 
@@ -181,14 +180,6 @@ def play(track_id):
         album_art=album_art,
         access_token=access_token,
     )
-
-
-@app.route('/api/token')
-def api_token():
-    token = get_token()
-    if not token:
-        return jsonify({"error": "not_authenticated"}), 401
-    return jsonify({"access_token": token})
 
 
 @app.route('/api/play', methods=['POST'])
