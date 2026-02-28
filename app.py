@@ -7,8 +7,8 @@ import random
 import string
 import requests
 import logging
-import httpx
 import jwt
+from supabase import create_client as create_supabase_client
 from spotipy.oauth2 import SpotifyOAuth
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,31 +31,13 @@ SUPABASE_ANON_KEY    = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 JWT_SECRET           = os.environ.get("JWT_SECRET", "hitormiss-secret")
 
+_db = None
 
-# ── Supabase helpers ──────────────────────────────────────────────────────────
-
-def sb(method, table, data=None, query=""):
-    """Thin wrapper around the Supabase REST API."""
-    url = f"{SUPABASE_URL}/rest/v1/{table}{('?' + query) if query else ''}"
-    headers = {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-    with httpx.Client() as client:
-        resp = getattr(client, method)(url, headers=headers, json=data)
-    return resp
-
-
-def sb_get(table, query=""):
-    return sb("get", table, query=query)
-
-def sb_post(table, data):
-    return sb("post", table, data=data)
-
-def sb_patch(table, query, data):
-    return sb("patch", table, data=data, query=query)
+def get_db():
+    global _db
+    if _db is None and SUPABASE_URL and SUPABASE_SERVICE_KEY:
+        _db = create_supabase_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _db
 
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -134,7 +116,7 @@ def extract_playlist_id(text):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Spotify OAuth routes (ongewijzigd)
+# Spotify OAuth routes
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/')
@@ -171,7 +153,7 @@ def logout():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Single-player modus (behouden)
+# Single-player modus
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/scan')
@@ -281,15 +263,20 @@ def room_create():
     playlist_id = extract_playlist_id(data.get("playlist_url", "")) or ""
 
     pin = ''.join(random.choices(string.digits, k=6))
+    db  = get_db()
 
-    room_resp = sb_post("rooms", {"pin": pin, "deck_mode": deck_mode, "playlist_id": playlist_id})
-    if room_resp.status_code != 201:
-        return jsonify({"error": "Kamer aanmaken mislukt", "details": room_resp.text}), 500
-    room_id = room_resp.json()[0]["id"]
+    try:
+        room = db.table("rooms").insert({
+            "pin": pin, "deck_mode": deck_mode, "playlist_id": playlist_id
+        }).execute()
+        room_id = room.data[0]["id"]
 
-    state_resp = sb_post("game_state", {"room_id": room_id, "phase": "idle"})
-    if state_resp.status_code != 201:
-        return jsonify({"error": "Game state aanmaken mislukt"}), 500
+        db.table("game_state").insert({
+            "room_id": room_id, "phase": "idle"
+        }).execute()
+    except Exception as e:
+        logger.error(f"Room create error: {e}")
+        return jsonify({"error": "Kamer aanmaken mislukt", "details": str(e)}), 500
 
     token = make_host_token(room_id, pin)
     return jsonify({"pin": pin, "room_id": room_id, "token": token})
@@ -302,16 +289,19 @@ def room_join():
     if not pin or not team_name:
         return jsonify({"error": "PIN en teamnaam zijn verplicht"}), 400
 
-    room_resp = sb_get("rooms", f"pin=eq.{pin}&status=eq.waiting")
-    if room_resp.status_code != 200 or not room_resp.json():
-        return jsonify({"error": "Kamer niet gevonden of spel al gestart"}), 404
-    room = room_resp.json()[0]
-    room_id = room["id"]
+    db = get_db()
+    try:
+        rooms = db.table("rooms").select("*").eq("pin", pin).eq("status", "waiting").execute()
+        if not rooms.data:
+            return jsonify({"error": "Kamer niet gevonden of spel al gestart"}), 404
+        room    = rooms.data[0]
+        room_id = room["id"]
 
-    team_resp = sb_post("teams", {"room_id": room_id, "name": team_name})
-    if team_resp.status_code != 201:
-        return jsonify({"error": "Team aanmaken mislukt"}), 500
-    team = team_resp.json()[0]
+        team = db.table("teams").insert({"room_id": room_id, "name": team_name}).execute()
+        team = team.data[0]
+    except Exception as e:
+        logger.error(f"Room join error: {e}")
+        return jsonify({"error": "Meedoen mislukt", "details": str(e)}), 500
 
     token = make_team_token(team["id"], room_id)
     return jsonify({"team_id": team["id"], "room_id": room_id,
@@ -345,18 +335,24 @@ def game_start():
     if not claims or claims.get("role") != "host":
         return jsonify({"error": "Geen toegang"}), 403
     room_id = claims["room_id"]
+    db = get_db()
 
-    teams = sb_get("teams", f"room_id=eq.{room_id}&order=created_at.asc").json()
-    if not teams:
-        return jsonify({"error": "Geen teams gevonden"}), 400
+    try:
+        teams = db.table("teams").select("*").eq("room_id", room_id).order("created_at").execute()
+        if not teams.data:
+            return jsonify({"error": "Geen teams gevonden"}), 400
 
-    sb_patch("rooms", f"id=eq.{room_id}", {"status": "playing"})
-    sb_patch("game_state", f"room_id=eq.{room_id}", {
-        "current_team_id": teams[0]["id"],
-        "phase": "idle",
-        "round_number": 1,
-    })
-    return jsonify({"status": "started", "first_team": teams[0]["name"]})
+        db.table("rooms").update({"status": "playing"}).eq("id", room_id).execute()
+        db.table("game_state").update({
+            "current_team_id": teams.data[0]["id"],
+            "phase": "idle",
+            "round_number": 1,
+        }).eq("room_id", room_id).execute()
+    except Exception as e:
+        logger.error(f"Game start error: {e}")
+        return jsonify({"error": "Start mislukt", "details": str(e)}), 500
+
+    return jsonify({"status": "started", "first_team": teams.data[0]["name"]})
 
 
 @app.route('/game/draw', methods=['POST'])
@@ -371,8 +367,13 @@ def game_draw():
     if not access_token:
         return jsonify({"error": "Spotify niet verbonden"}), 401
 
-    room = sb_get("rooms", f"id=eq.{room_id}").json()[0]
-    playlist_id = room.get("playlist_id")
+    db = get_db()
+    try:
+        room = db.table("rooms").select("*").eq("id", room_id).execute()
+        playlist_id = room.data[0].get("playlist_id")
+    except Exception as e:
+        return jsonify({"error": "Kamer ophalen mislukt", "details": str(e)}), 500
+
     if not playlist_id:
         return jsonify({"error": "Geen playlist ingesteld"}), 400
 
@@ -393,17 +394,21 @@ def game_draw():
     year     = int(track["album"]["release_date"][:4])
     images   = track["album"]["images"]
     active_track = {
-        "track_id":   track["id"],
-        "name":       track["name"],
-        "artist":     ", ".join(a["name"] for a in track["artists"]),
-        "year":       year,
-        "album_art":  images[0]["url"] if images else None,
+        "track_id":  track["id"],
+        "name":      track["name"],
+        "artist":    ", ".join(a["name"] for a in track["artists"]),
+        "year":      year,
+        "album_art": images[0]["url"] if images else None,
     }
 
-    sb_patch("game_state", f"room_id=eq.{room_id}", {
-        "active_track": active_track,
-        "phase": "placing",
-    })
+    try:
+        db.table("game_state").update({
+            "active_track": active_track,
+            "phase": "placing",
+        }).eq("room_id", room_id).execute()
+    except Exception as e:
+        return jsonify({"error": "Game state updaten mislukt", "details": str(e)}), 500
+
     return jsonify({"track": active_track})
 
 
@@ -416,64 +421,69 @@ def game_place():
 
     team_id  = claims["team_id"]
     room_id  = claims["room_id"]
-    position = data.get("position")  # 0-based insert index
+    position = data.get("position")
 
     if position is None:
         return jsonify({"error": "Geen positie opgegeven"}), 400
 
-    state = sb_get("game_state", f"room_id=eq.{room_id}").json()
-    if not state:
-        return jsonify({"error": "Game state niet gevonden"}), 404
-    state = state[0]
+    db = get_db()
+    try:
+        state = db.table("game_state").select("*").eq("room_id", room_id).execute()
+        if not state.data:
+            return jsonify({"error": "Game state niet gevonden"}), 404
+        state = state.data[0]
 
-    if state["current_team_id"] != team_id:
-        return jsonify({"error": "Niet jouw beurt"}), 403
-    if state["phase"] != "placing":
-        return jsonify({"error": "Geen kaart actief"}), 400
+        if state["current_team_id"] != team_id:
+            return jsonify({"error": "Niet jouw beurt"}), 403
+        if state["phase"] != "placing":
+            return jsonify({"error": "Geen kaart actief"}), 400
 
-    year         = state["active_track"]["year"]
-    active_track = state["active_track"]
+        year         = state["active_track"]["year"]
+        active_track = state["active_track"]
 
-    timeline = sb_get("timeline_cards",
-                       f"team_id=eq.{team_id}&order=position.asc").json()
+        timeline = db.table("timeline_cards").select("*").eq("team_id", team_id).order("position").execute()
+        timeline = timeline.data
 
-    # Validate placement
-    correct = True
-    if position > 0 and timeline[position - 1]["year"] > year:
-        correct = False
-    if position < len(timeline) and timeline[position]["year"] < year:
-        correct = False
+        # Validate placement
+        correct = True
+        if position > 0 and len(timeline) >= position and timeline[position - 1]["year"] > year:
+            correct = False
+        if position < len(timeline) and timeline[position]["year"] < year:
+            correct = False
 
-    if correct:
-        # Shift existing cards at or after insert position
-        for card in timeline[position:]:
-            sb_patch("timeline_cards", f"id=eq.{card['id']}",
-                     {"position": card["position"] + 1})
+        if correct:
+            for card in timeline[position:]:
+                db.table("timeline_cards").update({"position": card["position"] + 1}).eq("id", card["id"]).execute()
 
-        sb_post("timeline_cards", {
-            "team_id":     team_id,
-            "room_id":     room_id,
-            "track_id":    active_track["track_id"],
-            "track_name":  active_track["name"],
-            "artist_name": active_track["artist"],
-            "year":        year,
-            "position":    position,
-        })
+            db.table("timeline_cards").insert({
+                "team_id":     team_id,
+                "room_id":     room_id,
+                "track_id":    active_track["track_id"],
+                "track_name":  active_track["name"],
+                "artist_name": active_track["artist"],
+                "year":        year,
+                "position":    position,
+            }).execute()
 
-        new_count = len(timeline) + 1
-        if new_count >= 10:
-            team_name = sb_get("teams", f"id=eq.{team_id}").json()[0]["name"]
-            sb_patch("rooms",      f"id=eq.{room_id}",      {"status": "finished"})
-            sb_patch("game_state", f"room_id=eq.{room_id}", {
-                "phase":        "finished",
-                "active_track": {**active_track, "winner": team_name},
-            })
-            return jsonify({"correct": True, "winner": team_name, "card_count": new_count})
+            new_count = len(timeline) + 1
+            if new_count >= 10:
+                team_name = db.table("teams").select("name").eq("id", team_id).execute().data[0]["name"]
+                db.table("rooms").update({"status": "finished"}).eq("id", room_id).execute()
+                db.table("game_state").update({
+                    "phase":        "finished",
+                    "active_track": {**active_track, "winner": team_name},
+                }).eq("room_id", room_id).execute()
+                return jsonify({"correct": True, "winner": team_name, "card_count": new_count})
 
-    sb_patch("game_state", f"room_id=eq.{room_id}", {
-        "phase":        "result",
-        "active_track": {**active_track, "placement_correct": correct},
-    })
+        db.table("game_state").update({
+            "phase":        "result",
+            "active_track": {**active_track, "placement_correct": correct},
+        }).eq("room_id", room_id).execute()
+
+    except Exception as e:
+        logger.error(f"Game place error: {e}")
+        return jsonify({"error": "Plaatsen mislukt", "details": str(e)}), 500
+
     return jsonify({"correct": correct, "card_count": len(timeline) + (1 if correct else 0)})
 
 
@@ -484,18 +494,24 @@ def game_next_turn():
     if not claims or claims.get("role") != "host":
         return jsonify({"error": "Geen toegang"}), 403
     room_id = claims["room_id"]
+    db = get_db()
 
-    state   = sb_get("game_state", f"room_id=eq.{room_id}").json()[0]
-    teams   = sb_get("teams", f"room_id=eq.{room_id}&order=created_at.asc").json()
-    cur_idx = next((i for i, t in enumerate(teams)
-                    if t["id"] == state["current_team_id"]), 0)
-    next_team = teams[(cur_idx + 1) % len(teams)]
+    try:
+        state = db.table("game_state").select("*").eq("room_id", room_id).execute().data[0]
+        teams = db.table("teams").select("*").eq("room_id", room_id).order("created_at").execute().data
 
-    sb_patch("game_state", f"room_id=eq.{room_id}", {
-        "current_team_id": next_team["id"],
-        "phase":           "idle",
-        "active_track":    None,
-    })
+        cur_idx   = next((i for i, t in enumerate(teams) if t["id"] == state["current_team_id"]), 0)
+        next_team = teams[(cur_idx + 1) % len(teams)]
+
+        db.table("game_state").update({
+            "current_team_id": next_team["id"],
+            "phase":           "idle",
+            "active_track":    None,
+        }).eq("room_id", room_id).execute()
+    except Exception as e:
+        logger.error(f"Next turn error: {e}")
+        return jsonify({"error": "Beurt wisselen mislukt", "details": str(e)}), 500
+
     return jsonify({"next_team": next_team["name"]})
 
 
