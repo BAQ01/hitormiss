@@ -151,6 +151,11 @@
         </div>
     </div>
 
+    <a id="open-spotify-btn" href="https://open.spotify.com/track/{{ track_id }}" target="_blank"
+       class="spotify-btn" style="display:none;">
+        Open in Spotify
+    </a>
+
     <div class="buttons">
         <a href="{{ url_for('scan_page') }}" class="spotify-btn">📷 Volgende kaart</a>
         <a href="{{ url_for('home') }}" class="btn-secondary">← Home</a>
@@ -189,9 +194,11 @@
             if (data.status === 'playing') {
                 setStatus('▶ Speelt af');
             } else if (data.error === 'no_device') {
-                setStatus('⚠️ Open Spotify op je telefoon en probeer opnieuw');
+                setStatus('Open Spotify op je telefoon en tik daarna hieronder:');
+                document.getElementById('open-spotify-btn').style.display = 'inline-block';
             } else {
-                setStatus('❌ Afspelen mislukt — open Spotify op je telefoon');
+                setStatus('❌ Afspelen mislukt');
+                document.getElementById('open-spotify-btn').style.display = 'inline-block';
                 console.error('Play error:', data);
             }
         })
@@ -201,40 +208,38 @@
         });
     }
 
-    window.onSpotifyWebPlaybackSDKReady = () => {
-        const player = new Spotify.Player({
-            name: 'HitOrMiss',
-            getOAuthToken: cb => cb(ACCESS_TOKEN),
-            volume: 0.8,
-        });
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        player.addListener('ready', ({ device_id }) => {
-            setStatus('Verbonden — nummer laden...');
-            playTrack(device_id);
-        });
+    if (isMobile) {
+        // SDK werkt niet op mobiel — direct de Spotify-app op de telefoon aansturen
+        setStatus('Zoeken naar Spotify-apparaat...');
+        playTrack(null);
+    } else {
+        // Desktop: gebruik de Web Playback SDK (speelt via browser)
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            const player = new Spotify.Player({
+                name: 'HitOrMiss',
+                getOAuthToken: cb => cb(ACCESS_TOKEN),
+                volume: 0.8,
+            });
 
-        player.addListener('player_state_changed', state => {
-            if (state && !state.paused) setStatus('▶ Speelt af');
-        });
+            player.addListener('ready', ({ device_id }) => {
+                setStatus('Verbonden — nummer laden...');
+                playTrack(device_id);
+            });
 
-        player.addListener('account_error', ({ message }) => {
-            setStatus('Zoeken naar Spotify-apparaat...');
-            playTrack(null);
-        });
+            player.addListener('player_state_changed', state => {
+                if (state && !state.paused) setStatus('▶ Speelt af');
+            });
 
-        player.addListener('initialization_error', ({ message }) => {
-            setStatus('Zoeken naar Spotify-apparaat...');
-            playTrack(null);
-        });
+            player.addListener('account_error', () => { playTrack(null); });
+            player.addListener('initialization_error', () => { playTrack(null); });
+            player.addListener('authentication_error', () => { playTrack(null); });
 
-        player.addListener('authentication_error', ({ message }) => {
-            setStatus('Zoeken naar Spotify-apparaat...');
-            playTrack(null);
-        });
-
-        player.connect().then(success => {
-            if (!success) playTrack(null);
-        });
-    };
+            player.connect().then(success => {
+                if (!success) playTrack(null);
+            });
+        };
+    }
 </script>
 {% endblock %}
