@@ -49,21 +49,18 @@ h1 {
 
 {% block scripts %}
 <script>
-    function onScanSuccess(decodedText) {
-        // Stop the scanner to prevent duplicate scans
-        scanner.clear().catch(() => {});
-        window.location.href = `/process_scan?track=${encodeURIComponent(decodedText)}`;
-    }
+    const scanner = new Html5Qrcode("reader");
 
-    function onScanFailure(error) {
-        // Suppress noisy "not found" warnings
-    }
-
-    const scanner = new Html5QrcodeScanner("reader", {
-        fps: 10,
-        qrbox: { width: 280, height: 280 },
-        rememberLastUsedCamera: true,
+    scanner.start(
+        { facingMode: "environment" },  // achtercamera
+        { fps: 10, qrbox: { width: 280, height: 280 } },
+        (decodedText) => {
+            scanner.stop().catch(() => {});
+            window.location.href = `/process_scan?track=${encodeURIComponent(decodedText)}`;
+        },
+        () => {}  // stille foutafhandeling
+    ).catch(err => {
+        console.error("Camera kon niet starten:", err);
     });
-    scanner.render(onScanSuccess, onScanFailure);
 </script>
 {% endblock %}
