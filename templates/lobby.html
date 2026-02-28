@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}HITORMISS — Lobby{% endblock %}
+
+{% block styles %}
+.lobby-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    max-width: 400px;
+    width: 90%;
+}
+h1 { font-size: 2rem; letter-spacing: 2px; }
+.card {
+    background: rgba(0,0,0,0.35);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+}
+.card h2 { font-size: 1.2rem; margin-bottom: 16px; }
+input[type=text], input[type=url], select {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    background: rgba(255,255,255,0.15);
+    color: white;
+}
+input::placeholder { color: rgba(255,255,255,0.5); }
+select option { background: #191414; color: white; }
+.error { color: #ff6b6b; font-size: 0.9rem; margin-top: 4px; }
+/* Waiting screen */
+#waiting { display: none; text-align: center; }
+.pin-display {
+    font-size: 3.5rem;
+    font-weight: bold;
+    letter-spacing: 8px;
+    color: #1DB954;
+    margin: 16px 0;
+}
+.teams-list { text-align: left; margin-top: 12px; }
+.team-item {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-size: 1rem;
+}
+{% endblock %}
+
+{% block content %}
+<div class="lobby-container">
+    <h1>HITORMISS</h1>
+
+    <!-- Kamer aanmaken -->
+    <div class="card" id="create-section">
+        <h2>🎮 Kamer aanmaken</h2>
+        <select id="deck-mode">
+            <option value="digital">Digitaal (Spotify playlist)</option>
+            <option value="physical">Fysiek (QR-kaarten)</option>
+        </select>
+        <div id="playlist-section">
+            <input type="url" id="playlist-url"
+                   placeholder="Spotify playlist URL (bijv. open.spotify.com/playlist/...)">
+        </div>
+        <button class="spotify-btn" onclick="createRoom()" style="width:100%">Maak kamer</button>
+        <p class="error" id="create-error"></p>
+    </div>
+
+    <!-- Wachten op spelers (na aanmaken) -->
+    <div class="card" id="waiting">
+        <h2>Deel deze code:</h2>
+        <div class="pin-display" id="pin-display">------</div>
+        <p style="opacity:0.7; font-size:0.9rem;">Teams gaan naar hitormiss.onrender.com en voeren de code in.</p>
+        <div class="teams-list" id="teams-list"></div>
+        <br>
+        <button class="spotify-btn" id="start-btn" onclick="startGame()" style="width:100%; display:none;">
+            ▶ Start spel
+        </button>
+    </div>
+
+    <!-- Joinen als team -->
+    <div class="card" id="join-section">
+        <h2>👥 Meedoen als team</h2>
+        <input type="text" id="join-pin" placeholder="6-cijferige code" maxlength="6"
+               style="font-size:1.5rem; letter-spacing:4px; text-align:center;">
+        <input type="text" id="team-name" placeholder="Teamnaam">
+        <button class="spotify-btn" onclick="joinRoom()" style="width:100%">Doe mee</button>
+        <p class="error" id="join-error"></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    const SUPABASE_URL      = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let hostToken = null;
+    let currentRoomId = null;
+
+    // Show/hide playlist input based on deck mode
+    document.getElementById('deck-mode').addEventListener('change', (e) => {
+        document.getElementById('playlist-section').style.display =
+            e.target.value === 'digital' ? 'block' : 'none';
+    });
+
+    window.createRoom = async () => {
+        const deckMode   = document.getElementById('deck-mode').value;
+        const playlistUrl = document.getElementById('playlist-url').value;
+
+        const resp = await fetch('/room/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            document.getElementById('create-error').textContent = data.error;
+            return;
+        }
+
+        hostToken    = data.token;
+        currentRoomId = data.room_id;
+        localStorage.setItem('hitormiss_host_token', hostToken);
+        localStorage.setItem('hitormiss_room_id',   currentRoomId);
+
+        document.getElementById('create-section').style.display = 'none';
+        document.getElementById('join-section').style.display   = 'none';
+        document.getElementById('waiting').style.display        = 'block';
+        document.getElementById('pin-display').textContent      = data.pin;
+
+        // Subscribe to new teams joining
+        supabase.channel(`lobby:${currentRoomId}`)
+            .on('postgres_changes', {
+                event:  'INSERT',
+                schema: 'public',
+                table:  'teams',
+                filter: `room_id=eq.${currentRoomId}`,
+            }, (payload) => {
+                addTeamToList(payload.new.name);
+            })
+            .subscribe();
+    };
+
+    function addTeamToList(name) {
+        const list = document.getElementById('teams-list');
+        const div  = document.createElement('div');
+        div.className = 'team-item';
+        div.textContent = '👥 ' + name;
+        list.appendChild(div);
+        document.getElementById('start-btn').style.display = 'block';
+    }
+
+    window.startGame = async () => {
+        const resp = await fetch('/game/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: hostToken }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error); return; }
+
+        const pin = document.getElementById('pin-display').textContent;
+        window.location.href = `/host/${pin}`;
+    };
+
+    window.joinRoom = async () => {
+        const pin      = document.getElementById('join-pin').value.trim();
+        const teamName = document.getElementById('team-name').value.trim();
+
+        const resp = await fetch('/room/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin, team_name: teamName }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            document.getElementById('join-error').textContent = data.error;
+            return;
+        }
+
+        localStorage.setItem('hitormiss_team_token',   data.token);
+        localStorage.setItem('hitormiss_team_id',      data.team_id);
+        localStorage.setItem('hitormiss_team_name',    data.team_name);
+        localStorage.setItem('hitormiss_room_id',      data.room_id);
+        window.location.href = `/controller/${pin}`;
+    };
+</script>
+{% endblock %}

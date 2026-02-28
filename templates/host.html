@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Host — HITORMISS{% endblock %}
+
+{% block head %}
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
+{% endblock %}
+
+{% block styles %}
+body { justify-content: flex-start; padding-top: 20px; }
+.host-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 600px;
+    width: 95%;
+}
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+}
+.pin-badge {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #1DB954;
+    letter-spacing: 4px;
+}
+.teams-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+}
+.team-chip {
+    background: rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.9rem;
+}
+.team-chip.active { background: #1DB954; font-weight: bold; }
+/* Track card */
+.track-card {
+    background: rgba(0,0,0,0.4);
+    border-radius: 16px;
+    padding: 20px;
+    width: 100%;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+.track-card img {
+    width: 120px;
+    height: 120px;
+    border-radius: 10px;
+    object-fit: cover;
+}
+.track-card-placeholder {
+    width: 120px;
+    height: 120px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    flex-shrink: 0;
+}
+.track-meta { flex: 1; text-align: left; }
+.track-meta .artist { font-size: 1.2rem; font-weight: bold; }
+.track-meta .title  { font-size: 1rem; opacity: 0.8; margin-top: 4px; }
+.track-meta .year   {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #1DB954;
+    margin-top: 10px;
+    display: none;
+}
+.status-line {
+    font-size: 0.9rem;
+    opacity: 0.65;
+    min-height: 18px;
+}
+.controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%; }
+.result-banner {
+    display: none;
+    font-size: 1.6rem;
+    font-weight: bold;
+    padding: 16px 24px;
+    border-radius: 12px;
+    width: 100%;
+    text-align: center;
+}
+.result-banner.correct { background: rgba(29,185,84,0.3); }
+.result-banner.wrong   { background: rgba(200,0,0,0.3); }
+{% endblock %}
+
+{% block content %}
+<div class="host-container">
+
+    <!-- Top bar: PIN + beurt -->
+    <div class="top-bar">
+        <span>Code: <span class="pin-badge">{{ pin }}</span></span>
+        <span id="turn-label" style="opacity:0.7">Wachten op start...</span>
+        <span id="status-dot">⏸</span>
+    </div>
+
+    <!-- Teams -->
+    <div class="teams-bar" id="teams-bar"></div>
+
+    <!-- Actieve track -->
+    <div class="track-card" id="track-card" style="display:none">
+        <div class="track-card-placeholder" id="art-placeholder">🎵</div>
+        <img id="album-art" style="display:none" src="" alt="Album art">
+        <div class="track-meta">
+            <div class="artist" id="artist-name" style="filter:blur(8px)">—</div>
+            <div class="title"  id="track-name"  style="filter:blur(8px)">—</div>
+            <div class="year"   id="year-label">—</div>
+        </div>
+    </div>
+
+    <p class="status-line" id="sdk-status">SDK laden...</p>
+
+    <!-- Resultaat banner -->
+    <div class="result-banner" id="result-banner"></div>
+
+    <!-- Bedieningsknoppen -->
+    <div class="controls">
+        <button class="spotify-btn" id="btn-draw"      onclick="drawCard()"    style="display:none">🎵 Trek kaart</button>
+        <button class="spotify-btn" id="btn-pause"     onclick="togglePause()" style="display:none">⏸</button>
+        <button class="spotify-btn" id="btn-reveal"    onclick="revealTrack()" style="display:none">👁 Onthul nummer</button>
+        <button class="spotify-btn" id="btn-next"      onclick="nextTurn()"    style="display:none">➡ Volgende beurt</button>
+        <a href="{{ url_for('lobby') }}" class="btn-secondary">← Lobby</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    const SUPABASE_URL      = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    const ACCESS_TOKEN      = "{{ access_token }}";
+    const supabase          = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const hostToken = localStorage.getItem('hitormiss_host_token');
+    const roomId    = localStorage.getItem('hitormiss_room_id');
+
+    let sdkPlayer  = null;
+    let isPlaying  = false;
+    let currentTrack = null;
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+    const $   = id => document.getElementById(id);
+    const show = id => $(id).style.display = 'block';
+    const hide = id => $(id).style.display = 'none';
+    const showBtn = id => $(id).style.display = 'inline-block';
+
+    function setStatus(msg) { $('sdk-status').textContent = msg; }
+
+    // ── Load teams ────────────────────────────────────────────────────────────
+    async function loadTeams() {
+        const { data } = await supabase.from('teams')
+            .select('*').eq('room_id', roomId).order('created_at');
+        renderTeams(data || [], null);
+    }
+
+    function renderTeams(teams, currentTeamId) {
+        const bar = $('teams-bar');
+        bar.innerHTML = '';
+        teams.forEach(t => {
+            const chip = document.createElement('div');
+            chip.className = 'team-chip' + (t.id === currentTeamId ? ' active' : '');
+            chip.textContent = t.name;
+            bar.appendChild(chip);
+        });
+    }
+
+    // ── Supabase Realtime ─────────────────────────────────────────────────────
+    supabase.channel(`host:${roomId}`)
+        .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'game_state',
+            filter: `room_id=eq.${roomId}`,
+        }, async (payload) => {
+            const state = payload.new;
+            const { data: teams } = await supabase.from('teams')
+                .select('*').eq('room_id', roomId).order('created_at');
+            const currentTeam = teams?.find(t => t.id === state.current_team_id);
+
+            renderTeams(teams || [], state.current_team_id);
+            $('turn-label').textContent = currentTeam ? `Beurt: ${currentTeam.name}` : '';
+
+            if (state.phase === 'idle') {
+                hideTrackCard();
+                hide('btn-next');
+                showBtn('btn-draw');
+                hide('result-banner');
+            } else if (state.phase === 'placing' && state.active_track) {
+                currentTrack = state.active_track;
+                showTrackCard(state.active_track, false);
+                hide('btn-draw');
+                showBtn('btn-pause');
+                showBtn('btn-reveal');
+            } else if (state.phase === 'result' && state.active_track) {
+                const correct = state.active_track.placement_correct;
+                showTrackCard(state.active_track, true);
+                showResult(correct);
+                hide('btn-reveal');
+                showBtn('btn-next');
+            } else if (state.phase === 'finished' && state.active_track?.winner) {
+                showTrackCard(state.active_track, true);
+                $('result-banner').className = 'result-banner correct';
+                $('result-banner').textContent = `🏆 ${state.active_track.winner} wint!`;
+                show('result-banner');
+                hide('btn-draw'); hide('btn-next'); hide('btn-pause'); hide('btn-reveal');
+            }
+        })
+        .subscribe();
+
+    function showTrackCard(track, revealed) {
+        show('track-card');
+        $('artist-name').textContent = track.artist;
+        $('track-name').textContent  = track.name;
+        $('year-label').textContent  = track.year;
+
+        if (revealed) {
+            $('artist-name').style.filter = 'none';
+            $('track-name').style.filter  = 'none';
+            $('year-label').style.display  = 'block';
+        } else {
+            $('artist-name').style.filter = 'blur(8px)';
+            $('track-name').style.filter  = 'blur(8px)';
+            $('year-label').style.display  = 'none';
+        }
+
+        if (track.album_art) {
+            $('album-art').src = track.album_art;
+            show('album-art');
+            hide('art-placeholder');
+        }
+    }
+
+    function hideTrackCard() {
+        hide('track-card');
+        $('album-art').src = '';
+        show('art-placeholder');
+    }
+
+    function showResult(correct) {
+        const banner = $('result-banner');
+        banner.className = 'result-banner ' + (correct ? 'correct' : 'wrong');
+        banner.textContent = correct ? '✅ Correct geplaatst!' : '❌ Fout geplaatst!';
+        show('result-banner');
+    }
+
+    // ── Game actions ──────────────────────────────────────────────────────────
+    window.drawCard = async () => {
+        hide('btn-draw');
+        setStatus('Kaart trekken...');
+        const resp = await fetch('/game/draw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: hostToken }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { setStatus('❌ ' + data.error); showBtn('btn-draw'); return; }
+        // Play the track via SDK
+        playTrack(data.track.track_id);
+        setStatus('');
+    };
+
+    window.nextTurn = async () => {
+        if (sdkPlayer) await sdkPlayer.pause().catch(() => {});
+        else await fetch('/api/pause', { method: 'POST' });
+
+        hide('btn-next'); hide('result-banner');
+        await fetch('/game/next-turn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: hostToken }),
+        });
+    };
+
+    window.revealTrack = () => {
+        if (!currentTrack) return;
+        showTrackCard(currentTrack, true);
+        hide('btn-reveal');
+    };
+
+    window.togglePause = () => {
+        const btn = $('btn-pause');
+        if (sdkPlayer) {
+            sdkPlayer.togglePlay();
+        } else {
+            if (isPlaying) {
+                fetch('/api/pause', { method: 'POST' });
+                btn.textContent = '▶'; isPlaying = false;
+            } else {
+                if (currentTrack) playTrack(currentTrack.track_id);
+            }
+        }
+    };
+
+    // ── Spotify playback ──────────────────────────────────────────────────────
+    function playTrack(trackId) {
+        fetch('/api/play', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ track_id: trackId, device_id: window._sdkDeviceId }),
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'playing') {
+                isPlaying = true;
+                $('btn-pause').textContent = '⏸';
+                setStatus('▶ Speelt af');
+            } else {
+                setStatus('❌ Afspelen mislukt: ' + (d.error || ''));
+            }
+        });
+    }
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+        const player = new Spotify.Player({
+            name: 'HitOrMiss Host',
+            getOAuthToken: cb => cb(ACCESS_TOKEN),
+            volume: 0.8,
+        });
+        sdkPlayer = player;
+
+        player.addListener('ready', ({ device_id }) => {
+            window._sdkDeviceId = device_id;
+            setStatus('Klaar om muziek af te spelen');
+            showBtn('btn-draw');
+        });
+        player.addListener('player_state_changed', state => {
+            if (!state) return;
+            isPlaying = !state.paused;
+            $('btn-pause').textContent = isPlaying ? '⏸' : '▶';
+        });
+        player.addListener('account_error',      () => { sdkPlayer = null; setStatus('⚠️ Geen Premium — gebruik Spotify-app'); showBtn('btn-draw'); });
+        player.addListener('initialization_error', () => { sdkPlayer = null; setStatus('⚠️ SDK fout'); showBtn('btn-draw'); });
+        player.addListener('authentication_error', () => { sdkPlayer = null; setStatus('⚠️ Auth fout'); showBtn('btn-draw'); });
+
+        player.connect();
+    };
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    loadTeams();
+</script>
+{% endblock %}

@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Controller — HITORMISS{% endblock %}
+
+{% block styles %}
+body { justify-content: flex-start; padding-top: 20px; }
+.ctrl-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    max-width: 500px;
+    width: 95%;
+}
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+}
+.team-name { font-weight: bold; font-size: 1.05rem; }
+.score-badge { font-size: 1.2rem; font-weight: bold; color: #1DB954; }
+/* Active track card */
+.track-card {
+    background: rgba(0,0,0,0.4);
+    border-radius: 16px;
+    padding: 16px;
+    width: 100%;
+    display: none;
+    gap: 16px;
+    align-items: center;
+}
+.track-card.visible { display: flex; }
+.track-card img {
+    width: 90px; height: 90px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.track-card-placeholder {
+    width: 90px; height: 90px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    flex-shrink: 0;
+}
+.track-meta { flex: 1; text-align: left; }
+.track-meta .t-artist { font-size: 1.1rem; font-weight: bold; }
+.track-meta .t-title  { font-size: 0.9rem; opacity: 0.8; margin-top: 3px; }
+/* Instruction + status */
+.instruction {
+    text-align: center;
+    font-size: 0.95rem;
+    opacity: 0.85;
+    padding: 8px 14px;
+    background: rgba(29,185,84,0.12);
+    border-radius: 8px;
+    width: 100%;
+    display: none;
+}
+.instruction.visible { display: block; }
+.status-msg { font-size: 0.95rem; opacity: 0.65; text-align: center; min-height: 20px; }
+/* Result banner */
+.result-banner {
+    display: none;
+    font-size: 1.4rem;
+    font-weight: bold;
+    padding: 14px 20px;
+    border-radius: 12px;
+    width: 100%;
+    text-align: center;
+}
+.result-banner.correct { background: rgba(29,185,84,0.3);  display: block; }
+.result-banner.wrong   { background: rgba(200,0,0,0.3);    display: block; }
+.result-banner.winner  { background: rgba(29,185,84,0.4);  display: block; font-size: 1.6rem; }
+/* Timeline */
+.timeline-section { width: 100%; }
+.timeline-section h3 {
+    font-size: 0.95rem;
+    opacity: 0.6;
+    margin-bottom: 8px;
+    text-align: center;
+}
+.timeline { display: flex; flex-direction: column; gap: 0; width: 100%; }
+.slot-btn {
+    background: rgba(29,185,84,0.12);
+    border: 2px dashed rgba(29,185,84,0.5);
+    border-radius: 8px;
+    color: #1DB954;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 7px;
+    width: 100%;
+    margin: 3px 0;
+    transition: background 0.15s;
+}
+.slot-btn:hover  { background: rgba(29,185,84,0.3); }
+.slot-btn:disabled { opacity: 0.4; cursor: default; }
+.timeline-card {
+    background: rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 3px 0;
+}
+.tl-year   { font-size: 1.5rem; font-weight: bold; color: #1DB954; min-width: 58px; text-align: center; }
+.tl-meta   { flex: 1; text-align: left; }
+.tl-artist { font-size: 0.95rem; font-weight: bold; }
+.tl-name   { font-size: 0.82rem; opacity: 0.65; }
+.empty-timeline { text-align: center; opacity: 0.45; font-size: 0.9rem; padding: 16px; }
+{% endblock %}
+
+{% block content %}
+<div class="ctrl-container">
+
+    <!-- Top bar -->
+    <div class="top-bar">
+        <span class="team-name" id="team-name-label">—</span>
+        <span id="turn-indicator" style="opacity:0.7">Wachten...</span>
+        <span class="score-badge"><span id="card-count">0</span>/10 🎵</span>
+    </div>
+
+    <!-- Active track (hidden unless placing) -->
+    <div class="track-card" id="track-card">
+        <div class="track-card-placeholder" id="art-placeholder">🎵</div>
+        <img id="album-art" style="display:none" src="" alt="Album art">
+        <div class="track-meta">
+            <div class="t-artist" id="t-artist" style="filter:blur(8px)">—</div>
+            <div class="t-title"  id="t-title"  style="filter:blur(8px)">—</div>
+        </div>
+    </div>
+
+    <p class="instruction" id="instruction">Kies een positie voor dit nummer in jouw tijdlijn 👇</p>
+    <p class="status-msg"  id="status-msg">Wachten op host...</p>
+    <div class="result-banner" id="result-banner"></div>
+
+    <!-- Timeline -->
+    <div class="timeline-section">
+        <h3>Tijdlijn — <span id="tl-count">0</span> kaarten</h3>
+        <div class="timeline" id="timeline"></div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+    const SUPABASE_URL      = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const teamToken = localStorage.getItem('hitormiss_team_token');
+    const teamId    = localStorage.getItem('hitormiss_team_id');
+    const teamName  = localStorage.getItem('hitormiss_team_name');
+    const roomId    = localStorage.getItem('hitormiss_room_id');
+
+    document.getElementById('team-name-label').textContent = teamName || '—';
+
+    let timeline     = [];
+    let isMyTurn     = false;
+    let currentPhase = 'idle';
+    let placing      = false;   // true while waiting for result after placement
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const $  = id => document.getElementById(id);
+    const setStatus = msg => $('status-msg').textContent = msg;
+
+    function showTrackCard(track) {
+        $('track-card').classList.add('visible');
+        $('t-artist').textContent = track.artist;
+        $('t-title').textContent  = track.name;
+        if (track.album_art) {
+            $('album-art').src = track.album_art;
+            $('album-art').style.display = 'block';
+            $('art-placeholder').style.display = 'none';
+        } else {
+            $('album-art').style.display = 'none';
+            $('art-placeholder').style.display = 'flex';
+        }
+    }
+
+    function hideTrackCard() {
+        $('track-card').classList.remove('visible');
+        $('album-art').src = '';
+    }
+
+    function clearResult() {
+        $('result-banner').className = 'result-banner';
+    }
+
+    // ── Timeline rendering ────────────────────────────────────────────────────
+    async function loadTimeline() {
+        const { data } = await supabase
+            .from('timeline_cards')
+            .select('*')
+            .eq('team_id', teamId)
+            .order('position', { ascending: true });
+        timeline = data || [];
+        $('card-count').textContent = timeline.length;
+        $('tl-count').textContent   = timeline.length;
+        renderTimeline();
+    }
+
+    function renderTimeline() {
+        const container = $('timeline');
+        const showSlots = isMyTurn && currentPhase === 'placing' && !placing;
+        container.innerHTML = '';
+
+        if (timeline.length === 0) {
+            if (showSlots) container.appendChild(makeSlot(0));
+            const msg = document.createElement('div');
+            msg.className = 'empty-timeline';
+            msg.textContent = showSlots
+                ? 'Tijdlijn leeg — eerste kaart hier plaatsen'
+                : 'Nog geen kaarten in jouw tijdlijn';
+            container.appendChild(msg);
+            return;
+        }
+
+        if (showSlots) container.appendChild(makeSlot(0));
+        timeline.forEach((card, i) => {
+            container.appendChild(makeCard(card));
+            if (showSlots) container.appendChild(makeSlot(i + 1));
+        });
+    }
+
+    function makeCard(card) {
+        const div = document.createElement('div');
+        div.className = 'timeline-card';
+        div.innerHTML = `
+            <div class="tl-year">${card.year}</div>
+            <div class="tl-meta">
+                <div class="tl-artist">${card.artist_name}</div>
+                <div class="tl-name">${card.track_name}</div>
+            </div>`;
+        return div;
+    }
+
+    function makeSlot(position) {
+        const btn = document.createElement('button');
+        btn.className = 'slot-btn';
+        btn.textContent = '＋ Hier plaatsen';
+        btn.onclick = () => placeCard(position);
+        return btn;
+    }
+
+    // ── Place card ────────────────────────────────────────────────────────────
+    async function placeCard(position) {
+        placing = true;
+        document.querySelectorAll('.slot-btn').forEach(b => b.disabled = true);
+        $('instruction').classList.remove('visible');
+        setStatus('Plaatsing controleren...');
+
+        const resp = await fetch('/game/place', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ token: teamToken, position }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            placing = false;
+            setStatus('❌ ' + (data.error || 'Fout bij plaatsen'));
+        }
+        // Result arrives via Realtime (game_state phase → 'result')
+    }
+
+    // ── Realtime: game_state ──────────────────────────────────────────────────
+    supabase.channel(`ctrl:${roomId}`)
+        .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'game_state',
+            filter: `room_id=eq.${roomId}`,
+        }, async (payload) => {
+            const state = payload.new;
+            currentPhase = state.phase;
+            isMyTurn     = state.current_team_id === teamId;
+
+            clearResult();
+
+            if (state.phase === 'idle') {
+                placing = false;
+                hideTrackCard();
+                $('instruction').classList.remove('visible');
+                setStatus(isMyTurn ? 'Host trekt een kaart voor jou...' : 'Wachten op andere beurt...');
+                $('turn-indicator').textContent = isMyTurn ? '⭐ Jouw beurt' : 'Wachten...';
+                renderTimeline();
+
+            } else if (state.phase === 'placing' && state.active_track) {
+                placing = false;
+                showTrackCard(state.active_track);
+                if (isMyTurn) {
+                    $('instruction').classList.add('visible');
+                    setStatus('');
+                } else {
+                    $('instruction').classList.remove('visible');
+                    setStatus('Wachten... andere team plaatst...');
+                }
+                $('turn-indicator').textContent = isMyTurn ? '⭐ Jouw beurt' : 'Wachten...';
+                renderTimeline();
+
+            } else if (state.phase === 'result' && state.active_track) {
+                placing = false;
+                hideTrackCard();
+                $('instruction').classList.remove('visible');
+                if (isMyTurn) {
+                    const correct = state.active_track.placement_correct;
+                    const banner  = $('result-banner');
+                    banner.className  = 'result-banner ' + (correct ? 'correct' : 'wrong');
+                    banner.textContent = correct ? '✅ Correct geplaatst!' : '❌ Fout geplaatst!';
+                    setStatus('');
+                } else {
+                    setStatus('Wachten op volgende beurt...');
+                }
+                $('turn-indicator').textContent = isMyTurn ? '⭐ Jouw beurt' : 'Wachten...';
+                await loadTimeline();
+
+            } else if (state.phase === 'finished') {
+                placing = false;
+                hideTrackCard();
+                $('instruction').classList.remove('visible');
+                const winner = state.active_track?.winner;
+                const banner = $('result-banner');
+                banner.className  = 'result-banner winner';
+                banner.textContent = winner === teamName ? '🏆 Jullie winnen!' : `🏆 ${winner} wint!`;
+                $('turn-indicator').textContent = '🎉 Spel afgelopen';
+                setStatus('');
+                await loadTimeline();
+            }
+        })
+        .subscribe();
+
+    // ── Realtime: timeline_cards (auto-refresh on new card) ───────────────────
+    supabase.channel(`tl:${teamId}`)
+        .on('postgres_changes', {
+            event: 'INSERT', schema: 'public', table: 'timeline_cards',
+            filter: `team_id=eq.${teamId}`,
+        }, () => { loadTimeline(); })
+        .subscribe();
+
+    // ── Init: load game state, then timeline ──────────────────────────────────
+    (async () => {
+        const { data: state } = await supabase
+            .from('game_state')
+            .select('*')
+            .eq('room_id', roomId)
+            .single();
+
+        if (state) {
+            currentPhase = state.phase;
+            isMyTurn     = state.current_team_id === teamId;
+            $('turn-indicator').textContent = isMyTurn ? '⭐ Jouw beurt' : 'Wachten...';
+
+            if (state.phase === 'placing' && state.active_track) {
+                showTrackCard(state.active_track);
+                if (isMyTurn) {
+                    $('instruction').classList.add('visible');
+                } else {
+                    setStatus('Wachten... andere team plaatst...');
+                }
+            } else if (state.phase === 'finished') {
+                const winner = state.active_track?.winner;
+                const banner = $('result-banner');
+                banner.className  = 'result-banner winner';
+                banner.textContent = winner === teamName ? '🏆 Jullie winnen!' : `🏆 ${winner} wint!`;
+                $('turn-indicator').textContent = '🎉 Spel afgelopen';
+            } else if (state.phase === 'idle') {
+                setStatus(isMyTurn ? 'Host trekt een kaart voor jou...' : 'Wachten op andere beurt...');
+            }
+        }
+
+        await loadTimeline();
+    })();
+</script>
+{% endblock %}
