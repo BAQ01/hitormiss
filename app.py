@@ -201,18 +201,14 @@ def api_play():
         "Content-Type": "application/json",
     }
 
-    # When no SDK device, find a Spotify device via the API
+    # When no SDK device, find a Smartphone via the API (never fall back to Computer/laptop)
     if not device_id:
         dev_resp = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
         if dev_resp.status_code == 200:
-            devices = dev_resp.json().get("devices", [])
-            # Prefer smartphone, then any device
-            for d in devices:
+            for d in dev_resp.json().get("devices", []):
                 if "phone" in d["type"].lower():
                     device_id = d["id"]
                     break
-            if not device_id and devices:
-                device_id = devices[0]["id"]
 
         if not device_id:
             return jsonify({
