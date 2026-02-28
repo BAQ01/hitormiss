@@ -35,7 +35,7 @@ def get_spotify_oauth(redirect_uri):
         client_secret=SPOTIPY_CLIENT_SECRET,
         redirect_uri=redirect_uri,
         scope=SCOPE,
-        show_dialog=True,
+        show_dialog=False,
         cache_path=None,
     )
 
