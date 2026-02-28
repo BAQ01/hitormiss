@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Fout - HITORMISS{% endblock %}
+
+{% block styles %}
+.error-container {
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 80%;
+}
+.error-code {
+    font-size: 0.8rem;
+    color: #ccc;
+    margin-top: 20px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <h1>❌ Er is een fout opgetreden</h1>
+    <p>{{ message }}</p>
+    
+    {% if error_details %}
+    <div class="error-code">
+        <p>Technische details: {{ error_details }}</p>
+    </div>
+    {% endif %}
+    
+    <a href="{{ url_for('home') }}" class="spotify-btn">Terug naar Home</a>
+</div>
+{% endblock %}

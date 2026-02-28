@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}{{ artist_name }} - HITORMISS{% endblock %}
+
+{% block head %}
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
+{% endblock %}
+
+{% block styles %}
+.game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 400px;
+    width: 90%;
+}
+.album-art {
+    width: 220px;
+    height: 220px;
+    border-radius: 14px;
+    object-fit: cover;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.album-placeholder {
+    width: 220px;
+    height: 220px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 64px;
+}
+.track-info {
+    text-align: center;
+    line-height: 1.4;
+}
+.artist-name {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+.track-name {
+    font-size: 1.05rem;
+    opacity: 0.8;
+}
+.status {
+    font-size: 0.85rem;
+    opacity: 0.65;
+    min-height: 18px;
+}
+
+/* ── Year flip card ── */
+.year-section {
+    perspective: 700px;
+}
+.year-card {
+    width: 150px;
+    height: 90px;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.55s ease;
+    cursor: pointer;
+}
+.year-card.revealed {
+    transform: rotateY(180deg);
+    cursor: default;
+}
+.year-front,
+.year-back {
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+.year-front {
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.25);
+    flex-direction: column;
+    gap: 4px;
+    font-size: 2rem;
+}
+.year-front .hint {
+    font-size: 0.7rem;
+    font-weight: normal;
+    opacity: 0.65;
+    letter-spacing: 0.5px;
+}
+.year-back {
+    background: #1DB954;
+    transform: rotateY(180deg);
+    font-size: 2.6rem;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+.buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+{% endblock %}
+
+{% block content %}
+<div class="game-container">
+
+    {% if album_art %}
+    <img class="album-art" src="{{ album_art }}" alt="Album art van {{ artist_name }}">
+    {% else %}
+    <div class="album-placeholder">🎵</div>
+    {% endif %}
+
+    <div class="track-info">
+        <p class="artist-name">{{ artist_name }}</p>
+        <p class="track-name">{{ track_name }}</p>
+    </div>
+
+    <p class="status" id="status">Laden...</p>
+
+    <!-- Flip card: shows ? until tapped -->
+    <div class="year-section">
+        <div class="year-card" id="year-card" onclick="revealYear()" title="Tik om het jaar te onthullen">
+            <div class="year-front">
+                ❓
+                <span class="hint">Onthul jaar</span>
+            </div>
+            <div class="year-back">{{ year }}</div>
+        </div>
+    </div>
+
+    <div class="buttons">
+        <a href="{{ url_for('scan_page') }}" class="spotify-btn">📷 Volgende kaart</a>
+        <a href="{{ url_for('home') }}" class="btn-secondary">← Home</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const TRACK_ID    = "{{ track_id }}";
+    const ACCESS_TOKEN = "{{ access_token }}";
+
+    function revealYear() {
+        document.getElementById('year-card').classList.add('revealed');
+    }
+
+    function setStatus(msg) {
+        document.getElementById('status').textContent = msg;
+    }
+
+    /**
+     * Ask the server to start playback.
+     * deviceId = Spotify Web Playback SDK device  → plays in browser
+     * deviceId = null                             → server finds phone / any device
+     */
+    function playTrack(deviceId) {
+        const body = { track_id: TRACK_ID };
+        if (deviceId) body.device_id = deviceId;
+
+        fetch('/api/play', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'playing') {
+                setStatus('▶ Speelt af');
+            } else if (data.error === 'no_device') {
+                setStatus('⚠️ Open Spotify op je telefoon en probeer opnieuw');
+            } else {
+                setStatus('❌ Afspelen mislukt — open Spotify op je telefoon');
+                console.error('Play error:', data);
+            }
+        })
+        .catch(err => {
+            setStatus('❌ Verbindingsfout');
+            console.error(err);
+        });
+    }
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+        const player = new Spotify.Player({
+            name: 'HitOrMiss',
+            getOAuthToken: cb => cb(ACCESS_TOKEN),
+            volume: 0.8,
+        });
+
+        // SDK player is ready in the browser → play through it
+        player.addListener('ready', ({ device_id }) => {
+            console.log('SDK klaar, device:', device_id);
+            setStatus('Verbonden — nummer laden...');
+            playTrack(device_id);
+        });
+
+        player.addListener('player_state_changed', state => {
+            if (state && !state.paused) {
+                setStatus('▶ Speelt af');
+            }
+        });
+
+        // No Premium → fall back to controlling Spotify app on phone
+        player.addListener('account_error', ({ message }) => {
+            console.warn('Geen Premium account, terugvallen op Spotify-app:', message);
+            setStatus('Zoeken naar Spotify-apparaat...');
+            playTrack(null);
+        });
+
+        player.addListener('initialization_error', ({ message }) => {
+            console.warn('SDK initialisatie mislukt, terugvallen op Spotify-app:', message);
+            setStatus('Zoeken naar Spotify-apparaat...');
+            playTrack(null);
+        });
+
+        player.addListener('authentication_error', ({ message }) => {
+            console.error('Auth fout:', message);
+            setStatus('⚠️ Sessie verlopen — opnieuw inloggen...');
+            setTimeout(() => { window.location.href = '/login'; }, 2000);
+        });
+
+        player.connect().then(success => {
+            if (!success) {
+                console.warn('SDK verbinding mislukt, terugvallen op Spotify-app');
+                playTrack(null);
+            }
+        });
+    };
+</script>
+{% endblock %}

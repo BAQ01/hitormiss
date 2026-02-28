@@ -1,47 +1,58 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HITORMISS - Welkom</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background: linear-gradient(135deg, #1DB954, #191414);
-            color: white;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .spotify-btn {
-            background-color: #1DB954;
-            color: white;
-            padding: 15px 30px;
-            font-size: 1.2rem;
-            border-radius: 30px;
-            text-decoration: none;
-            margin: 10px;
-            display: inline-block;
-            transition: 0.3s;
-        }
-        .spotify-btn:hover {
-            background-color: #1a9542;
-            transform: scale(1.05);
-        }
-    </style>
-</head>
-<body>
-    <h1>Welkom bij HITORMISS 🎵</h1>
+{% extends "base.html" %}
+
+{% block title %}HITORMISS{% endblock %}
+
+{% block styles %}
+.home-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    max-width: 360px;
+    width: 90%;
+}
+h1 {
+    font-size: 2.4rem;
+    letter-spacing: 2px;
+}
+.tagline {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+.instructions {
+    background: rgba(0,0,0,0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: left;
+    width: 100%;
+    font-size: 0.95rem;
+    line-height: 2;
+}
+.logout-link {
+    font-size: 0.8rem;
+    opacity: 0.6;
+    color: white;
+    text-decoration: underline;
+}
+{% endblock %}
+
+{% block content %}
+<div class="home-container">
+    <h1>HITORMISS</h1>
+    <p class="tagline">Raad het jaar — bouw jouw tijdlijn</p>
+
+    <div class="instructions">
+        1. Scan de QR-code op een kaart<br>
+        2. Luister naar het nummer<br>
+        3. Raad het uitjaar<br>
+        4. Onthul het jaar en check je antwoord
+    </div>
 
     {% if logged_in %}
-        <p>✅ Verbonden met Spotify!</p>
-        <a href="/scan" class="spotify-btn">📷 Scan een QR-code</a>
+        <a href="{{ url_for('scan_page') }}" class="spotify-btn">📷 Scan een kaart</a>
+        <a href="{{ url_for('logout') }}" class="logout-link">Uitloggen</a>
     {% else %}
-        <p>🔗 Verbind met Spotify om muziek af te spelen.</p>
-        <a href="/login" class="spotify-btn">🔗 Verbind Spotify</a>  <!-- 🔥 Correcte plek voor login-knop -->
+        <a href="{{ url_for('login') }}" class="spotify-btn">Verbind met Spotify</a>
     {% endif %}
-</body>
-</html>
+</div>
+{% endblock %}

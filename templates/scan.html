@@ -1,47 +1,69 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scan QR Code - HITORMISS</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <style>
-        body {
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
-        #reader {
-            width: 100%;
-            max-width: 400px;
-            margin: auto;
-        }
-        #message {
-            margin-top: 20px;
-            font-size: 18px;
-            color: red;
-        }
-    </style>
-</head>
-<body>
-    <h1>📷 Scan een QR-code</h1>
+{% extends "base.html" %}
+
+{% block title %}Scan kaart - HITORMISS{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/html5-qrcode"></script>
+{% endblock %}
+
+{% block styles %}
+.scan-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 90%;
+    max-width: 420px;
+}
+h1 {
+    font-size: 1.6rem;
+}
+#reader {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.3);
+}
+.error-msg {
+    background: rgba(200, 0, 0, 0.4);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    width: 100%;
+}
+{% endblock %}
+
+{% block content %}
+<div class="scan-container">
+    <h1>📷 Scan een kaart</h1>
+
+    {% if error_msg %}
+    <div class="error-msg">⚠️ {{ error_msg }}</div>
+    {% endif %}
+
     <div id="reader"></div>
-    <p id="message"></p>
 
-    <script>
-        function onScanSuccess(decodedText) {
-            console.log("✅ QR-code gescand:", decodedText);
-            window.location.href = `/process_scan?track=${decodedText}`;
-        }
+    <a href="{{ url_for('home') }}" class="btn-secondary">← Terug</a>
+</div>
+{% endblock %}
 
-        function onScanFailure(error) {
-            console.warn("⚠️ Geen geldige QR-code gedetecteerd:", error);
-        }
+{% block scripts %}
+<script>
+    function onScanSuccess(decodedText) {
+        // Stop the scanner to prevent duplicate scans
+        scanner.clear().catch(() => {});
+        window.location.href = `/process_scan?track=${encodeURIComponent(decodedText)}`;
+    }
 
-        // Start de scanner bij het laden van de pagina
-        document.addEventListener("DOMContentLoaded", function() {
-            let scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-            scanner.render(onScanSuccess, onScanFailure);
-        });
-    </script>
-</body>
-</html>
+    function onScanFailure(error) {
+        // Suppress noisy "not found" warnings
+    }
+
+    const scanner = new Html5QrcodeScanner("reader", {
+        fps: 10,
+        qrbox: { width: 280, height: 280 },
+        rememberLastUsedCamera: true,
+    });
+    scanner.render(onScanSuccess, onScanFailure);
+</script>
+{% endblock %}
