@@ -113,14 +113,21 @@ select option { background: #191414; color: white; }
         const deckMode   = document.getElementById('deck-mode').value;
         const playlistUrl = document.getElementById('playlist-url').value;
 
-        const resp = await fetch('/room/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl }),
-        });
-        const data = await resp.json();
+        let resp, data;
+        try {
+            resp = await fetch('/room/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl }),
+            });
+            data = await resp.json();
+        } catch (err) {
+            document.getElementById('create-error').textContent = 'Netwerkfout: ' + err.message;
+            return;
+        }
         if (!resp.ok) {
-            document.getElementById('create-error').textContent = data.error;
+            document.getElementById('create-error').textContent =
+                (data.error || 'Onbekende fout') + (data.details ? ': ' + data.details : '');
             return;
         }
 
@@ -134,26 +141,39 @@ select option { background: #191414; color: white; }
         document.getElementById('waiting').style.display        = 'block';
         document.getElementById('pin-display').textContent      = data.pin;
 
-        // Subscribe to new teams joining
+        // Realtime subscription
         supabase.channel(`lobby:${currentRoomId}`)
             .on('postgres_changes', {
                 event:  'INSERT',
                 schema: 'public',
                 table:  'teams',
                 filter: `room_id=eq.${currentRoomId}`,
-            }, (payload) => {
-                addTeamToList(payload.new.name);
-            })
+            }, () => { refreshTeams(); })
             .subscribe();
+
+        // Polling fallback (elke 3 sec)
+        refreshTeams();
+        setInterval(refreshTeams, 3000);
     };
 
-    function addTeamToList(name) {
-        const list = document.getElementById('teams-list');
-        const div  = document.createElement('div');
-        div.className = 'team-item';
-        div.textContent = '👥 ' + name;
-        list.appendChild(div);
-        document.getElementById('start-btn').style.display = 'block';
+    let knownTeams = new Set();
+
+    async function refreshTeams() {
+        const { data } = await supabase.from('teams').select('name').eq('room_id', currentRoomId);
+        if (!data) return;
+        data.forEach(t => {
+            if (!knownTeams.has(t.name)) {
+                knownTeams.add(t.name);
+                const list = document.getElementById('teams-list');
+                const div  = document.createElement('div');
+                div.className = 'team-item';
+                div.textContent = '👥 ' + t.name;
+                list.appendChild(div);
+            }
+        });
+        if (data.length > 0) {
+            document.getElementById('start-btn').style.display = 'block';
+        }
     }
 
     window.startGame = async () => {
