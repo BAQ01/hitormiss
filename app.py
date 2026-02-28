@@ -230,5 +230,22 @@ def api_play():
     return jsonify({"error": "playback_failed", "details": play_resp.text}), 500
 
 
+@app.route('/api/pause', methods=['POST'])
+def api_pause():
+    """Pause current Spotify playback."""
+    access_token = get_token()
+    if not access_token:
+        return jsonify({"error": "not_authenticated"}), 401
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    resp = requests.put("https://api.spotify.com/v1/me/player/pause", headers=headers)
+    if resp.status_code in [200, 204]:
+        return jsonify({"status": "paused"})
+    return jsonify({"error": "pause_failed", "details": resp.text}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, ssl_context='adhoc')

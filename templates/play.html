@@ -140,6 +140,8 @@
 
     <p class="status" id="status">Laden...</p>
 
+    <button id="pause-btn" class="spotify-btn" onclick="togglePause()" style="display:none; font-size:1.4rem; padding:12px 28px;">⏸</button>
+
     <!-- Flip card: reveals year + artist + title -->
     <div class="reveal-section">
         <div class="reveal-card" id="reveal-card" onclick="revealAll()" title="Tik om te onthullen">
@@ -157,8 +159,8 @@
     </a>
 
     <div class="buttons">
-        <a href="{{ url_for('scan_page') }}" class="spotify-btn">📷 Volgende kaart</a>
-        <a href="{{ url_for('home') }}" class="btn-secondary">← Home</a>
+        <a href="{{ url_for('scan_page') }}" class="spotify-btn" onclick="stopAndNavigate(event, this.href)">📷 Volgende kaart</a>
+        <a href="{{ url_for('home') }}" class="btn-secondary" onclick="stopAndNavigate(event, this.href)">← Home</a>
     </div>
 </div>
 {% endblock %}
@@ -167,6 +169,47 @@
 <script>
     const TRACK_ID     = "{{ track_id }}";
     const ACCESS_TOKEN = "{{ access_token }}";
+
+    let isPlaying = false;
+    let sdkPlayer = null;  // desktop SDK player reference
+
+    function setPauseBtn(playing) {
+        const btn = document.getElementById('pause-btn');
+        btn.style.display = 'inline-block';
+        btn.textContent = playing ? '⏸' : '▶';
+        isPlaying = playing;
+    }
+
+    function pauseViaApi() {
+        return fetch('/api/pause', { method: 'POST' });
+    }
+
+    function togglePause() {
+        if (sdkPlayer) {
+            sdkPlayer.togglePlay();
+        } else {
+            if (isPlaying) {
+                pauseViaApi().then(() => setPauseBtn(false));
+            } else {
+                // Hervat via API
+                fetch('/api/play', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ track_id: TRACK_ID }),
+                }).then(() => setPauseBtn(true));
+            }
+        }
+    }
+
+    function stopAndNavigate(e, href) {
+        e.preventDefault();
+        const doNav = () => { window.location.href = href; };
+        if (sdkPlayer) {
+            sdkPlayer.pause().then(doNav).catch(doNav);
+        } else {
+            pauseViaApi().then(doNav).catch(doNav);
+        }
+    }
 
     function revealAll() {
         document.getElementById('reveal-card').classList.add('revealed');
@@ -192,8 +235,9 @@
         .then(r => r.json())
         .then(data => {
             if (data.status === 'playing') {
-                setStatus('▶ Speelt af');
+                setStatus('');
                 document.getElementById('open-spotify-btn').style.display = 'none';
+                setPauseBtn(true);
             } else if (data.error === 'no_device') {
                 setStatus('Open Spotify op je telefoon en tik daarna hieronder:');
                 document.getElementById('open-spotify-btn').style.display = 'inline-block';
@@ -225,6 +269,7 @@
                 getOAuthToken: cb => cb(ACCESS_TOKEN),
                 volume: 0.8,
             });
+            sdkPlayer = player;
 
             player.addListener('ready', ({ device_id }) => {
                 setStatus('Verbonden — nummer laden...');
@@ -232,15 +277,15 @@
             });
 
             player.addListener('player_state_changed', state => {
-                if (state && !state.paused) setStatus('▶ Speelt af');
+                if (state) setPauseBtn(!state.paused);
             });
 
-            player.addListener('account_error', () => { playTrack(null); });
-            player.addListener('initialization_error', () => { playTrack(null); });
-            player.addListener('authentication_error', () => { playTrack(null); });
+            player.addListener('account_error', () => { sdkPlayer = null; playTrack(null); });
+            player.addListener('initialization_error', () => { sdkPlayer = null; playTrack(null); });
+            player.addListener('authentication_error', () => { sdkPlayer = null; playTrack(null); });
 
             player.connect().then(success => {
-                if (!success) playTrack(null);
+                if (!success) { sdkPlayer = null; playTrack(null); }
             });
         };
     }
