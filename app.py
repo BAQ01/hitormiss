@@ -91,6 +91,7 @@ def home():
 def login():
     redirect_uri = get_redirect_uri()
     session['redirect_uri'] = redirect_uri
+    logger.info(f"Login: redirect_uri = {redirect_uri}")
     sp_oauth = get_spotify_oauth(redirect_uri)
     return redirect(sp_oauth.get_authorize_url())
 
