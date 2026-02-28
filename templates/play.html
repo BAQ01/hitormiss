@@ -193,6 +193,7 @@
         .then(data => {
             if (data.status === 'playing') {
                 setStatus('▶ Speelt af');
+                document.getElementById('open-spotify-btn').style.display = 'none';
             } else if (data.error === 'no_device') {
                 setStatus('Open Spotify op je telefoon en tik daarna hieronder:');
                 document.getElementById('open-spotify-btn').style.display = 'inline-block';
@@ -211,8 +212,10 @@
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (isMobile) {
-        // SDK werkt niet op mobiel — direct de Spotify-app op de telefoon aansturen
-        setStatus('Zoeken naar Spotify-apparaat...');
+        // Op mobiel: toon direct de Spotify-knop, probeer API op de achtergrond
+        setStatus('Tik hieronder om het nummer af te spelen:');
+        document.getElementById('open-spotify-btn').style.display = 'inline-block';
+        // Probeer ook via API (werkt als Spotify al open staat)
         playTrack(null);
     } else {
         // Desktop: gebruik de Web Playback SDK (speelt via browser)
