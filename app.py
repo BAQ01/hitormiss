@@ -277,6 +277,20 @@ def api_pause():
     return jsonify({"error": "pause_failed", "details": resp.text}), 500
 
 
+@app.route('/api/resume', methods=['POST'])
+def api_resume():
+    """Resume playback from where it was paused (no position_ms reset)."""
+    access_token = get_token()
+    if not access_token:
+        return jsonify({"error": "not_authenticated"}), 401
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    # PUT /play without body = resume from current position
+    resp = requests.put("https://api.spotify.com/v1/me/player/play", headers=headers)
+    if resp.status_code in [200, 202, 204]:
+        return jsonify({"status": "playing"})
+    return jsonify({"error": "resume_failed", "details": resp.text}), 500
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Multiplayer — Lobby & Rooms
 # ══════════════════════════════════════════════════════════════════════════════

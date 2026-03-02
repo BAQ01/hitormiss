@@ -368,7 +368,14 @@ body { justify-content: flex-start; padding-top: 20px; }
                 fetch('/api/pause', { method: 'POST' });
                 btn.textContent = '▶'; isPlaying = false;
             } else {
-                if (currentTrack) playTrack(currentTrack.track_id, null);
+                // Resume vanuit huidige positie (niet opnieuw starten)
+                fetch('/api/resume', { method: 'POST' })
+                    .then(r => r.json()).then(d => {
+                        if (d.status === 'playing') {
+                            isPlaying = true;
+                            btn.textContent = '⏸';
+                        }
+                    });
             }
         }
     };
