@@ -60,6 +60,7 @@ select option { background: #191414; color: white; }
             <option value="digital">Digitaal (Spotify playlist)</option>
             <option value="physical">Fysiek (QR-kaarten)</option>
         </select>
+        <input type="text" id="host-team-name" placeholder="Jouw teamnaam (je doet ook mee)">
         <div id="playlist-section">
             <input type="url" id="playlist-url"
                    placeholder="Spotify playlist URL (bijv. open.spotify.com/playlist/...)">
@@ -110,15 +111,20 @@ select option { background: #191414; color: white; }
     });
 
     window.createRoom = async () => {
-        const deckMode   = document.getElementById('deck-mode').value;
+        const deckMode    = document.getElementById('deck-mode').value;
         const playlistUrl = document.getElementById('playlist-url').value;
+        const hostTeamName = document.getElementById('host-team-name').value.trim();
+        if (!hostTeamName) {
+            document.getElementById('create-error').textContent = 'Vul jouw teamnaam in.';
+            return;
+        }
 
         let resp, data;
         try {
             resp = await fetch('/room/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl }),
+                body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl, host_team_name: hostTeamName }),
             });
             data = await resp.json();
         } catch (err) {
@@ -135,6 +141,10 @@ select option { background: #191414; color: white; }
         currentRoomId = data.room_id;
         localStorage.setItem('hitormiss_host_token', hostToken);
         localStorage.setItem('hitormiss_room_id',   currentRoomId);
+        // Host is ook speler
+        localStorage.setItem('hitormiss_team_token', data.team_token);
+        localStorage.setItem('hitormiss_team_id',    data.team_id);
+        localStorage.setItem('hitormiss_team_name',  hostTeamName);
 
         document.getElementById('create-section').style.display = 'none';
         document.getElementById('join-section').style.display   = 'none';

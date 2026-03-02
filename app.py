@@ -259,8 +259,9 @@ def room_create():
     if not get_token():
         return jsonify({"error": "not_authenticated"}), 401
     data = request.get_json() or {}
-    deck_mode   = data.get("deck_mode", "digital")
-    playlist_id = extract_playlist_id(data.get("playlist_url", "")) or ""
+    deck_mode      = data.get("deck_mode", "digital")
+    playlist_id    = extract_playlist_id(data.get("playlist_url", "")) or ""
+    host_team_name = data.get("host_team_name", "Host").strip() or "Host"
 
     pin = ''.join(random.choices(string.digits, k=6))
     db  = get_db()
@@ -274,12 +275,20 @@ def room_create():
         db.table("game_state").insert({
             "room_id": room_id, "phase": "idle"
         }).execute()
+
+        # Host doet ook mee als team
+        team = db.table("teams").insert({
+            "room_id": room_id, "name": host_team_name
+        }).execute()
+        team_id = team.data[0]["id"]
     except Exception as e:
         logger.error(f"Room create error: {e}")
         return jsonify({"error": "Kamer aanmaken mislukt", "details": str(e)}), 500
 
-    token = make_host_token(room_id, pin)
-    return jsonify({"pin": pin, "room_id": room_id, "token": token})
+    token      = make_host_token(room_id, pin)
+    team_token = make_team_token(team_id, room_id)
+    return jsonify({"pin": pin, "room_id": room_id, "token": token,
+                    "team_id": team_id, "team_token": team_token})
 
 @app.route('/room/join', methods=['POST'])
 def room_join():

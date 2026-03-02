@@ -100,6 +100,34 @@ body { justify-content: flex-start; padding-top: 20px; }
 }
 .result-banner.correct { background: rgba(29,185,84,0.3); }
 .result-banner.wrong   { background: rgba(200,0,0,0.3); }
+/* Host-tijdlijn (zichtbaar als het de beurt van de host is) */
+.host-timeline-section { width: 100%; display: none; }
+.host-timeline-section.visible { display: block; }
+.host-timeline-section h3 { font-size: 0.95rem; opacity: 0.6; margin-bottom: 8px; text-align: center; }
+.host-instruction {
+    text-align: center; font-size: 0.95rem; opacity: 0.85;
+    padding: 8px 14px; background: rgba(29,185,84,0.12);
+    border-radius: 8px; width: 100%; margin-bottom: 6px;
+}
+.slot-btn {
+    background: rgba(29,185,84,0.12);
+    border: 2px dashed rgba(29,185,84,0.5);
+    border-radius: 8px; color: #1DB954;
+    font-size: 1rem; cursor: pointer;
+    padding: 7px; width: 100%; margin: 3px 0;
+    transition: background 0.15s;
+}
+.slot-btn:hover  { background: rgba(29,185,84,0.3); }
+.slot-btn:disabled { opacity: 0.4; cursor: default; }
+.tl-card {
+    background: rgba(255,255,255,0.08); border-radius: 10px;
+    padding: 10px 14px; display: flex; align-items: center;
+    gap: 12px; margin: 3px 0;
+}
+.tl-year   { font-size: 1.4rem; font-weight: bold; color: #1DB954; min-width: 54px; text-align: center; }
+.tl-meta   { flex: 1; text-align: left; }
+.tl-artist { font-size: 0.9rem; font-weight: bold; }
+.tl-name   { font-size: 0.82rem; opacity: 0.65; }
 {% endblock %}
 
 {% block content %}
@@ -131,6 +159,12 @@ body { justify-content: flex-start; padding-top: 20px; }
     <!-- Resultaat banner -->
     <div class="result-banner" id="result-banner"></div>
 
+    <!-- Host tijdlijn (zichtbaar als het de beurt van de host is) -->
+    <div class="host-timeline-section" id="host-timeline-section">
+        <p class="host-instruction">Kies een positie voor dit nummer in jouw tijdlijn 👇</p>
+        <div id="host-timeline"></div>
+    </div>
+
     <!-- Bedieningsknoppen -->
     <div class="controls">
         <button class="spotify-btn" id="btn-draw"      onclick="drawCard()"    style="display:none">🎵 Trek kaart</button>
@@ -152,11 +186,15 @@ body { justify-content: flex-start; padding-top: 20px; }
     const supabase          = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const hostToken = localStorage.getItem('hitormiss_host_token');
+    const teamToken = localStorage.getItem('hitormiss_team_token');
+    const teamId    = localStorage.getItem('hitormiss_team_id');
     const roomId    = localStorage.getItem('hitormiss_room_id');
 
-    let sdkPlayer  = null;
-    let isPlaying  = false;
+    let sdkPlayer    = null;
+    let isPlaying    = false;
     let currentTrack = null;
+    let hostTimeline = [];
+    let placing      = false;
 
     // ── UI helpers ────────────────────────────────────────────────────────────
     const $   = id => document.getElementById(id);
@@ -198,29 +236,44 @@ body { justify-content: flex-start; padding-top: 20px; }
             renderTeams(teams || [], state.current_team_id);
             $('turn-label').textContent = currentTeam ? `Beurt: ${currentTeam.name}` : '';
 
+            const isMyTurn = state.current_team_id === teamId;
+
             if (state.phase === 'idle') {
+                placing = false;
                 hideTrackCard();
                 hide('btn-next');
                 showBtn('btn-draw');
                 hide('result-banner');
+                $('host-timeline-section').classList.remove('visible');
             } else if (state.phase === 'placing' && state.active_track) {
+                placing = false;
                 currentTrack = state.active_track;
                 showTrackCard(state.active_track, false);
                 hide('btn-draw');
                 showBtn('btn-pause');
                 showBtn('btn-reveal');
+                if (isMyTurn) {
+                    await loadHostTimeline();
+                    $('host-timeline-section').classList.add('visible');
+                    hide('btn-reveal');
+                } else {
+                    $('host-timeline-section').classList.remove('visible');
+                }
             } else if (state.phase === 'result' && state.active_track) {
-                const correct = state.active_track.placement_correct;
+                placing = false;
                 showTrackCard(state.active_track, true);
-                showResult(correct);
+                showResult(state.active_track.placement_correct);
                 hide('btn-reveal');
                 showBtn('btn-next');
+                $('host-timeline-section').classList.remove('visible');
+                if (isMyTurn) await loadHostTimeline();
             } else if (state.phase === 'finished' && state.active_track?.winner) {
                 showTrackCard(state.active_track, true);
                 $('result-banner').className = 'result-banner correct';
                 $('result-banner').textContent = `🏆 ${state.active_track.winner} wint!`;
                 show('result-banner');
                 hide('btn-draw'); hide('btn-next'); hide('btn-pause'); hide('btn-reveal');
+                $('host-timeline-section').classList.remove('visible');
             }
         })
         .subscribe();
@@ -350,6 +403,63 @@ body { justify-content: flex-start; padding-top: 20px; }
 
         player.connect();
     };
+
+    // ── Host tijdlijn ─────────────────────────────────────────────────────────
+    async function loadHostTimeline() {
+        const { data } = await supabase.from('timeline_cards')
+            .select('*').eq('team_id', teamId).order('position', { ascending: true });
+        hostTimeline = data || [];
+        renderHostTimeline();
+    }
+
+    function renderHostTimeline() {
+        const container = $('host-timeline');
+        container.innerHTML = '';
+        if (hostTimeline.length === 0) {
+            container.appendChild(makeHostSlot(0));
+            const msg = document.createElement('div');
+            msg.style.cssText = 'text-align:center;opacity:0.45;font-size:0.9rem;padding:12px';
+            msg.textContent = 'Tijdlijn leeg — eerste kaart hier plaatsen';
+            container.appendChild(msg);
+            return;
+        }
+        container.appendChild(makeHostSlot(0));
+        hostTimeline.forEach((card, i) => {
+            const div = document.createElement('div');
+            div.className = 'tl-card';
+            div.innerHTML = `<div class="tl-year">${card.year}</div>
+                <div class="tl-meta"><div class="tl-artist">${card.artist_name}</div>
+                <div class="tl-name">${card.track_name}</div></div>`;
+            container.appendChild(div);
+            container.appendChild(makeHostSlot(i + 1));
+        });
+    }
+
+    function makeHostSlot(position) {
+        const btn = document.createElement('button');
+        btn.className = 'slot-btn';
+        btn.textContent = '＋ Hier plaatsen';
+        btn.onclick = () => placeHostCard(position);
+        return btn;
+    }
+
+    async function placeHostCard(position) {
+        placing = true;
+        document.querySelectorAll('.slot-btn').forEach(b => b.disabled = true);
+        $('host-timeline-section').classList.remove('visible');
+        setStatus('Plaatsing controleren...');
+        const resp = await fetch('/game/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: teamToken, position }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            placing = false;
+            setStatus('❌ ' + (data.error || 'Fout bij plaatsen'));
+        }
+        // Resultaat komt via Realtime
+    }
 
     // ── Init ──────────────────────────────────────────────────────────────────
     loadTeams();
