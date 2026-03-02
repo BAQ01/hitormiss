@@ -90,11 +90,11 @@ select option { background: #191414; color: white; }
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script>
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
     const SUPABASE_URL      = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
-    const { createClient } = window.supabase;
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let hostToken = null;

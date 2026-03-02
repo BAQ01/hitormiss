@@ -220,6 +220,7 @@ def api_play():
     data = request.get_json() or {}
     track_id = data.get("track_id")
     device_id = data.get("device_id")
+    logger.info(f"api_play: track_id={track_id}, device_id={device_id}")
     if not track_id:
         return jsonify({"error": "no track_id"}), 400
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
@@ -227,6 +228,7 @@ def api_play():
         dev_resp = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
         if dev_resp.status_code == 200:
             devices = dev_resp.json().get("devices", [])
+            logger.info(f"api_play: beschikbare apparaten: {[(d['name'], d['type'], d.get('is_active')) for d in devices]}")
             # Voorkeur: telefoon, daarna actief apparaat, daarna eerste beschikbare
             for d in devices:
                 if "phone" in d["type"].lower():
@@ -237,7 +239,10 @@ def api_play():
                         device_id = d["id"]; break
             if not device_id and devices:
                 device_id = devices[0]["id"]
+        else:
+            logger.error(f"api_play: apparaten ophalen mislukt: {dev_resp.status_code} {dev_resp.text}")
         if not device_id:
+            logger.warning("api_play: geen apparaat gevonden")
             return jsonify({"error": "no_device"}), 404
     play_resp = requests.put(
         f"https://api.spotify.com/v1/me/player/play?device_id={device_id}",
@@ -245,7 +250,9 @@ def api_play():
         json={"uris": [f"spotify:track:{track_id}"], "position_ms": 0},
     )
     if play_resp.status_code in [204, 202]:
+        logger.info(f"api_play: afspelen gelukt op device={device_id}")
         return jsonify({"status": "playing"})
+    logger.error(f"api_play: Spotify fout {play_resp.status_code}: {play_resp.text}")
     return jsonify({"error": "playback_failed", "details": play_resp.text}), 500
 
 @app.route('/api/token')
@@ -281,21 +288,28 @@ def lobby():
 
 @app.route('/room/create', methods=['POST'])
 def room_create():
+    logger.info("room_create: start")
     if not get_token():
+        logger.warning("room_create: niet ingelogd")
         return jsonify({"error": "not_authenticated"}), 401
     data = request.get_json() or {}
     deck_mode      = data.get("deck_mode", "digital")
     playlist_id    = extract_playlist_id(data.get("playlist_url", "")) or ""
     host_team_name = data.get("host_team_name", "Host").strip() or "Host"
+    logger.info(f"room_create: deck_mode={deck_mode}, host_team={host_team_name}")
 
     pin = ''.join(random.choices(string.digits, k=6))
     db  = get_db()
+    if db is None:
+        logger.error("room_create: Supabase client niet beschikbaar (check env vars)")
+        return jsonify({"error": "Database niet beschikbaar", "details": "SUPABASE_URL of SERVICE_KEY ontbreekt"}), 500
 
     try:
         room = db.table("rooms").insert({
             "pin": pin, "deck_mode": deck_mode, "playlist_id": playlist_id
         }).execute()
         room_id = room.data[0]["id"]
+        logger.info(f"room_create: room aangemaakt, id={room_id}, pin={pin}")
 
         db.table("game_state").insert({
             "room_id": room_id, "phase": "idle"
@@ -306,12 +320,14 @@ def room_create():
             "room_id": room_id, "name": host_team_name
         }).execute()
         team_id = team.data[0]["id"]
+        logger.info(f"room_create: host-team aangemaakt, id={team_id}")
     except Exception as e:
-        logger.error(f"Room create error: {e}")
+        logger.error(f"Room create error: {e}", exc_info=True)
         return jsonify({"error": "Kamer aanmaken mislukt", "details": str(e)}), 500
 
     token      = make_host_token(room_id, pin)
     team_token = make_team_token(team_id, room_id)
+    logger.info(f"room_create: klaar, pin={pin}")
     return jsonify({"pin": pin, "room_id": room_id, "token": token,
                     "team_id": team_id, "team_token": team_token})
 
@@ -320,10 +336,13 @@ def room_join():
     data = request.get_json() or {}
     pin       = data.get("pin", "").strip()
     team_name = data.get("team_name", "").strip()
+    logger.info(f"room_join: pin={pin}, team={team_name}")
     if not pin or not team_name:
         return jsonify({"error": "PIN en teamnaam zijn verplicht"}), 400
 
     db = get_db()
+    if db is None:
+        return jsonify({"error": "Database niet beschikbaar"}), 500
     try:
         rooms = db.table("rooms").select("*").eq("pin", pin).eq("status", "waiting").execute()
         if not rooms.data:
@@ -369,6 +388,7 @@ def game_start():
     if not claims or claims.get("role") != "host":
         return jsonify({"error": "Geen toegang"}), 403
     room_id = claims["room_id"]
+    logger.info(f"game_start: room_id={room_id}")
     db = get_db()
 
     try:
@@ -396,6 +416,7 @@ def game_draw():
     if not claims or claims.get("role") != "host":
         return jsonify({"error": "Geen toegang"}), 403
     room_id = claims["room_id"]
+    logger.info(f"game_draw: room_id={room_id}")
 
     if not TRACKS:
         return jsonify({"error": "Geen nummers beschikbaar (tracks.json ontbreekt)"}), 500
@@ -533,7 +554,7 @@ def game_place():
         }).eq("room_id", room_id).execute()
 
     except Exception as e:
-        logger.error(f"Game place error: {e}")
+        logger.error(f"Game place error: {e}", exc_info=True)
         return jsonify({"error": "Plaatsen mislukt", "details": str(e)}), 500
 
     return jsonify({"correct": correct, "card_count": len(timeline) + (1 if correct else 0)})
@@ -561,7 +582,7 @@ def game_next_turn():
             "active_track":    None,
         }).eq("room_id", room_id).execute()
     except Exception as e:
-        logger.error(f"Next turn error: {e}")
+        logger.error(f"Next turn error: {e}", exc_info=True)
         return jsonify({"error": "Beurt wisselen mislukt", "details": str(e)}), 500
 
     return jsonify({"next_team": next_team["name"]})

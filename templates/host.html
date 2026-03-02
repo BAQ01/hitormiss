@@ -3,7 +3,13 @@
 {% block title %}Host — HITORMISS{% endblock %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Stub moet vóór de SDK-script staan zodat de SDK de callback kan vinden -->
+<script>
+window.onSpotifyWebPlaybackSDKReady = function() {
+    window._sdkReady = true;
+    if (typeof window._startSDKPlayer === 'function') window._startSDKPlayer();
+};
+</script>
 <script src="https://sdk.scdn.co/spotify-player.js"></script>
 {% endblock %}
 
@@ -178,11 +184,12 @@ body { justify-content: flex-start; padding-top: 20px; }
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
     const SUPABASE_URL      = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
     const ACCESS_TOKEN      = "{{ access_token }}";
-    const { createClient } = window.supabase;
     const supabase          = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const hostToken = localStorage.getItem('hitormiss_host_token');
@@ -394,7 +401,9 @@ body { justify-content: flex-start; padding-top: 20px; }
         setStatus('Zorg dat Spotify open staat op dit apparaat');
         showBtn('btn-draw');
     } else {
-        window.onSpotifyWebPlaybackSDKReady = () => {
+        // Twee-fase aanpak: stub al gedefinieerd in <head> (niet-module script)
+        // _startSDKPlayer wordt hier gedefinieerd en aangeroepen als SDK al klaar is
+        window._startSDKPlayer = () => {
             const player = new Spotify.Player({
                 name: 'HitOrMiss Host',
                 getOAuthToken: cb => cb(ACCESS_TOKEN),
@@ -412,7 +421,7 @@ body { justify-content: flex-start; padding-top: 20px; }
                 isPlaying = !state.paused;
                 $('btn-pause').textContent = isPlaying ? '⏸' : '▶';
             });
-            player.addListener('account_error',       () => { sdkPlayer = null; setStatus('⚠️ Geen Premium — gebruik Spotify-app'); showBtn('btn-draw'); });
+            player.addListener('account_error',        () => { sdkPlayer = null; setStatus('⚠️ Geen Premium — gebruik Spotify-app'); showBtn('btn-draw'); });
             player.addListener('initialization_error', () => { sdkPlayer = null; setStatus('⚠️ SDK fout'); showBtn('btn-draw'); });
             player.addListener('authentication_error', () => { sdkPlayer = null; setStatus('⚠️ Auth fout'); showBtn('btn-draw'); });
 
@@ -420,6 +429,9 @@ body { justify-content: flex-start; padding-top: 20px; }
                 if (!success) { sdkPlayer = null; setStatus('⚠️ SDK verbinding mislukt'); showBtn('btn-draw'); }
             });
         };
+
+        // Als de SDK al klaar was vóór dit module-script (stub gevangen), start nu
+        if (window._sdkReady) window._startSDKPlayer();
     }
 
     // ── Host tijdlijn ─────────────────────────────────────────────────────────
