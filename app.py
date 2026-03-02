@@ -226,10 +226,17 @@ def api_play():
     if not device_id:
         dev_resp = requests.get("https://api.spotify.com/v1/me/player/devices", headers=headers)
         if dev_resp.status_code == 200:
-            for d in dev_resp.json().get("devices", []):
+            devices = dev_resp.json().get("devices", [])
+            # Voorkeur: telefoon, daarna actief apparaat, daarna eerste beschikbare
+            for d in devices:
                 if "phone" in d["type"].lower():
-                    device_id = d["id"]
-                    break
+                    device_id = d["id"]; break
+            if not device_id:
+                for d in devices:
+                    if d.get("is_active"):
+                        device_id = d["id"]; break
+            if not device_id and devices:
+                device_id = devices[0]["id"]
         if not device_id:
             return jsonify({"error": "no_device"}), 404
     play_resp = requests.put(
@@ -240,6 +247,13 @@ def api_play():
     if play_resp.status_code in [204, 202]:
         return jsonify({"status": "playing"})
     return jsonify({"error": "playback_failed", "details": play_resp.text}), 500
+
+@app.route('/api/token')
+def api_token():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "not_authenticated"}), 401
+    return jsonify({"access_token": token})
 
 @app.route('/api/pause', methods=['POST'])
 def api_pause():

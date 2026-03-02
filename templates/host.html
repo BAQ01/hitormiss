@@ -382,7 +382,7 @@ body { justify-content: flex-start; padding-top: 20px; }
     window.onSpotifyWebPlaybackSDKReady = () => {
         const player = new Spotify.Player({
             name: 'HitOrMiss Host',
-            getOAuthToken: cb => cb(ACCESS_TOKEN),
+            getOAuthToken: cb => fetch('/api/token').then(r => r.json()).then(d => cb(d.access_token)),
             volume: 0.8,
         });
         sdkPlayer = player;
