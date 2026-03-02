@@ -8,6 +8,7 @@ import string
 import requests
 import logging
 import jwt
+import json
 from supabase import create_client as create_supabase_client
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -30,6 +31,16 @@ SUPABASE_URL         = os.environ.get("SUPABASE_URL", "")
 SUPABASE_ANON_KEY    = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 JWT_SECRET           = os.environ.get("JWT_SECRET", "hitormiss-secret")
+
+# ── Kaartendatabase laden ─────────────────────────────────────────────────────
+_tracks_path = os.path.join(os.path.dirname(__file__), 'tracks.json')
+try:
+    with open(_tracks_path, 'r', encoding='utf-8') as _f:
+        TRACKS = json.load(_f)
+    logger.info(f"Geladen: {len(TRACKS)} nummers uit tracks.json")
+except Exception as _e:
+    TRACKS = []
+    logger.warning(f"tracks.json niet geladen: {_e}")
 
 _db = None
 
@@ -372,44 +383,62 @@ def game_draw():
         return jsonify({"error": "Geen toegang"}), 403
     room_id = claims["room_id"]
 
+    if not TRACKS:
+        return jsonify({"error": "Geen nummers beschikbaar (tracks.json ontbreekt)"}), 500
+
     access_token = get_token()
     if not access_token:
         return jsonify({"error": "Spotify niet verbonden"}), 401
 
-    db = get_db()
-    try:
-        room = db.table("rooms").select("*").eq("id", room_id).execute()
-        playlist_id = room.data[0].get("playlist_id")
-    except Exception as e:
-        return jsonify({"error": "Kamer ophalen mislukt", "details": str(e)}), 500
+    # Trek een willekeurig nummer uit de kaartendatabase
+    card = random.choice(TRACKS)
+    artist     = card["artist"]
+    track_name = card["track"]
+    year       = card["year"]
 
-    if not playlist_id:
-        return jsonify({"error": "Geen playlist ingesteld"}), 400
-
+    # Zoek het nummer op Spotify voor track_id en albumhoes
     headers = {"Authorization": f"Bearer {access_token}"}
-    pl_resp = requests.get(
-        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
-        f"?limit=100&fields=items(track(id,name,artists,album(release_date,images)))",
+    search_resp = requests.get(
+        "https://api.spotify.com/v1/search",
         headers=headers,
+        params={"q": f"artist:{artist} track:{track_name}", "type": "track", "limit": 1},
     )
-    if pl_resp.status_code != 200:
-        return jsonify({"error": "Playlist ophalen mislukt"}), 500
 
-    items = [i for i in pl_resp.json().get("items", []) if i.get("track") and i["track"].get("id")]
-    if not items:
-        return jsonify({"error": "Playlist leeg"}), 400
+    track_id  = None
+    album_art = None
+    if search_resp.status_code == 200:
+        items = search_resp.json().get("tracks", {}).get("items", [])
+        if items:
+            track_id  = items[0]["id"]
+            images    = items[0]["album"]["images"]
+            album_art = images[0]["url"] if images else None
 
-    track    = random.choice(items)["track"]
-    year     = int(track["album"]["release_date"][:4])
-    images   = track["album"]["images"]
+    if not track_id:
+        # Bredere zoekopdracht als exacte match mislukt
+        search_resp2 = requests.get(
+            "https://api.spotify.com/v1/search",
+            headers=headers,
+            params={"q": f"{artist} {track_name}", "type": "track", "limit": 1},
+        )
+        if search_resp2.status_code == 200:
+            items2 = search_resp2.json().get("tracks", {}).get("items", [])
+            if items2:
+                track_id  = items2[0]["id"]
+                images    = items2[0]["album"]["images"]
+                album_art = images[0]["url"] if images else None
+
+    if not track_id:
+        return jsonify({"error": f"Nummer niet gevonden op Spotify: {artist} – {track_name}"}), 404
+
     active_track = {
-        "track_id":  track["id"],
-        "name":      track["name"],
-        "artist":    ", ".join(a["name"] for a in track["artists"]),
+        "track_id":  track_id,
+        "name":      track_name,
+        "artist":    artist,
         "year":      year,
-        "album_art": images[0]["url"] if images else None,
+        "album_art": album_art,
     }
 
+    db = get_db()
     try:
         db.table("game_state").update({
             "active_track": active_track,

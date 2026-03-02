@@ -57,14 +57,10 @@ select option { background: #191414; color: white; }
     <div class="card" id="create-section">
         <h2>🎮 Kamer aanmaken</h2>
         <select id="deck-mode">
-            <option value="digital">Digitaal (Spotify playlist)</option>
+            <option value="digital">Digitaal (kaartendatabase)</option>
             <option value="physical">Fysiek (QR-kaarten)</option>
         </select>
         <input type="text" id="host-team-name" placeholder="Jouw teamnaam (je doet ook mee)">
-        <div id="playlist-section">
-            <input type="url" id="playlist-url"
-                   placeholder="Spotify playlist URL (bijv. open.spotify.com/playlist/...)">
-        </div>
         <button class="spotify-btn" onclick="createRoom()" style="width:100%">Maak kamer</button>
         <p class="error" id="create-error"></p>
     </div>
@@ -104,15 +100,8 @@ select option { background: #191414; color: white; }
     let hostToken = null;
     let currentRoomId = null;
 
-    // Show/hide playlist input based on deck mode
-    document.getElementById('deck-mode').addEventListener('change', (e) => {
-        document.getElementById('playlist-section').style.display =
-            e.target.value === 'digital' ? 'block' : 'none';
-    });
-
     window.createRoom = async () => {
-        const deckMode    = document.getElementById('deck-mode').value;
-        const playlistUrl = document.getElementById('playlist-url').value;
+        const deckMode     = document.getElementById('deck-mode').value;
         const hostTeamName = document.getElementById('host-team-name').value.trim();
         if (!hostTeamName) {
             document.getElementById('create-error').textContent = 'Vul jouw teamnaam in.';
@@ -124,7 +113,7 @@ select option { background: #191414; color: white; }
             resp = await fetch('/room/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deck_mode: deckMode, playlist_url: playlistUrl, host_team_name: hostTeamName }),
+                body: JSON.stringify({ deck_mode: deckMode, host_team_name: hostTeamName }),
             });
             data = await resp.json();
         } catch (err) {
