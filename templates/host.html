@@ -3,6 +3,7 @@
 {% block title %}Host — HITORMISS{% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://sdk.scdn.co/spotify-player.js"></script>
 {% endblock %}
 
@@ -177,18 +178,19 @@ body { justify-content: flex-start; padding-top: 20px; }
 {% endblock %}
 
 {% block scripts %}
-<script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-
+<script>
     const SUPABASE_URL      = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
     const ACCESS_TOKEN      = "{{ access_token }}";
+    const { createClient } = window.supabase;
     const supabase          = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const hostToken = localStorage.getItem('hitormiss_host_token');
     const teamToken = localStorage.getItem('hitormiss_team_token');
     const teamId    = localStorage.getItem('hitormiss_team_id');
     const roomId    = localStorage.getItem('hitormiss_room_id');
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     let sdkPlayer    = null;
     let isPlaying    = false;
@@ -325,8 +327,8 @@ body { justify-content: flex-start; padding-top: 20px; }
         });
         const data = await resp.json();
         if (!resp.ok) { setStatus('❌ ' + data.error); showBtn('btn-draw'); return; }
-        // Play the track via SDK
-        playTrack(data.track.track_id);
+        // Op desktop: speel via SDK-browser-device; op mobiel: laat backend telefoon kiezen
+        playTrack(data.track.track_id, isMobile ? null : window._sdkDeviceId);
         setStatus('');
     };
 
@@ -350,59 +352,75 @@ body { justify-content: flex-start; padding-top: 20px; }
 
     window.togglePause = () => {
         const btn = $('btn-pause');
-        if (sdkPlayer) {
+        // SDK beschikbaar én op desktop (audio speelt in browser): gebruik SDK
+        if (sdkPlayer && !isMobile) {
             sdkPlayer.togglePlay();
         } else {
+            // Mobiel of geen SDK: gebruik REST API (audio speelt op telefoon)
             if (isPlaying) {
                 fetch('/api/pause', { method: 'POST' });
                 btn.textContent = '▶'; isPlaying = false;
             } else {
-                if (currentTrack) playTrack(currentTrack.track_id);
+                if (currentTrack) playTrack(currentTrack.track_id, null);
             }
         }
     };
 
     // ── Spotify playback ──────────────────────────────────────────────────────
-    function playTrack(trackId) {
+    function playTrack(trackId, deviceId) {
+        const body = { track_id: trackId };
+        if (deviceId) body.device_id = deviceId;
         fetch('/api/play', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ track_id: trackId, device_id: window._sdkDeviceId }),
+            body: JSON.stringify(body),
         }).then(r => r.json()).then(d => {
             if (d.status === 'playing') {
                 isPlaying = true;
                 $('btn-pause').textContent = '⏸';
                 setStatus('▶ Speelt af');
+            } else if (d.error === 'no_device') {
+                setStatus('⚠️ Open Spotify op je telefoon en probeer opnieuw');
+                showBtn('btn-draw');
             } else {
-                setStatus('❌ Afspelen mislukt: ' + (d.error || ''));
+                setStatus('❌ Afspelen mislukt: ' + (d.details || d.error || ''));
+                showBtn('btn-draw');
             }
         });
     }
 
-    window.onSpotifyWebPlaybackSDKReady = () => {
-        const player = new Spotify.Player({
-            name: 'HitOrMiss Host',
-            getOAuthToken: cb => fetch('/api/token').then(r => r.json()).then(d => cb(d.access_token)),
-            volume: 0.8,
-        });
-        sdkPlayer = player;
+    if (isMobile) {
+        // Op mobiel: sla SDK over, toon meteen de knop
+        setStatus('Zorg dat Spotify open staat op dit apparaat');
+        showBtn('btn-draw');
+    } else {
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            const player = new Spotify.Player({
+                name: 'HitOrMiss Host',
+                getOAuthToken: cb => cb(ACCESS_TOKEN),
+                volume: 0.8,
+            });
+            sdkPlayer = player;
 
-        player.addListener('ready', ({ device_id }) => {
-            window._sdkDeviceId = device_id;
-            setStatus('Klaar om muziek af te spelen');
-            showBtn('btn-draw');
-        });
-        player.addListener('player_state_changed', state => {
-            if (!state) return;
-            isPlaying = !state.paused;
-            $('btn-pause').textContent = isPlaying ? '⏸' : '▶';
-        });
-        player.addListener('account_error',      () => { sdkPlayer = null; setStatus('⚠️ Geen Premium — gebruik Spotify-app'); showBtn('btn-draw'); });
-        player.addListener('initialization_error', () => { sdkPlayer = null; setStatus('⚠️ SDK fout'); showBtn('btn-draw'); });
-        player.addListener('authentication_error', () => { sdkPlayer = null; setStatus('⚠️ Auth fout'); showBtn('btn-draw'); });
+            player.addListener('ready', ({ device_id }) => {
+                window._sdkDeviceId = device_id;
+                setStatus('Klaar om muziek af te spelen');
+                showBtn('btn-draw');
+            });
+            player.addListener('player_state_changed', state => {
+                if (!state) return;
+                isPlaying = !state.paused;
+                $('btn-pause').textContent = isPlaying ? '⏸' : '▶';
+            });
+            player.addListener('account_error',       () => { sdkPlayer = null; setStatus('⚠️ Geen Premium — gebruik Spotify-app'); showBtn('btn-draw'); });
+            player.addListener('initialization_error', () => { sdkPlayer = null; setStatus('⚠️ SDK fout'); showBtn('btn-draw'); });
+            player.addListener('authentication_error', () => { sdkPlayer = null; setStatus('⚠️ Auth fout'); showBtn('btn-draw'); });
 
-        player.connect();
-    };
+            player.connect().then(success => {
+                if (!success) { sdkPlayer = null; setStatus('⚠️ SDK verbinding mislukt'); showBtn('btn-draw'); }
+            });
+        };
+    }
 
     // ── Host tijdlijn ─────────────────────────────────────────────────────────
     async function loadHostTimeline() {

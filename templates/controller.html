@@ -151,11 +151,11 @@ body { justify-content: flex-start; padding-top: 20px; }
 {% endblock %}
 
 {% block scripts %}
-<script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
     const SUPABASE_URL      = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    const { createClient } = window.supabase;
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const teamToken = localStorage.getItem('hitormiss_team_token');
