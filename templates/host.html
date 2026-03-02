@@ -334,8 +334,8 @@ body { justify-content: flex-start; padding-top: 20px; }
         });
         const data = await resp.json();
         if (!resp.ok) { setStatus('❌ ' + data.error); showBtn('btn-draw'); return; }
-        // Op desktop: speel via SDK-browser-device; op mobiel: laat backend telefoon kiezen
-        playTrack(data.track.track_id, isMobile ? null : window._sdkDeviceId);
+        // Altijd null: backend kiest echte Spotify-app (telefoon/laptop), niet de browser-SDK
+        playTrack(data.track.track_id, null);
         setStatus('');
     };
 

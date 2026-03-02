@@ -229,16 +229,19 @@ def api_play():
         if dev_resp.status_code == 200:
             devices = dev_resp.json().get("devices", [])
             logger.info(f"api_play: beschikbare apparaten: {[(d['name'], d['type'], d.get('is_active')) for d in devices]}")
+            # Sla de HitOrMiss browser-SDK-speler over; die klinkt via de browser-tab
+            real = [d for d in devices if d["name"] != "HitOrMiss Host"]
+            pool = real if real else devices  # als er echt niets anders is, val terug op alle
             # Voorkeur: telefoon, daarna actief apparaat, daarna eerste beschikbare
-            for d in devices:
+            for d in pool:
                 if "phone" in d["type"].lower():
                     device_id = d["id"]; break
             if not device_id:
-                for d in devices:
+                for d in pool:
                     if d.get("is_active"):
                         device_id = d["id"]; break
-            if not device_id and devices:
-                device_id = devices[0]["id"]
+            if not device_id and pool:
+                device_id = pool[0]["id"]
         else:
             logger.error(f"api_play: apparaten ophalen mislukt: {dev_resp.status_code} {dev_resp.text}")
         if not device_id:
